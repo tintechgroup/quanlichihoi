@@ -1,254 +1,291 @@
 "use client";
 
 import {
+  AlertCircle,
+  CheckCircle2,
+  Database,
+  DatabaseBackup,
+  Download,
+  FileCheck2,
+  FileJson,
+  HardDrive,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Server,
+  ShieldAlert,
+  ShieldCheck,
+  Upload,
+  X,
+} from "lucide-react";
+
+import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type ReactNode,
 } from "react";
 
 import {
-  Archive,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Database,
-  Download,
-  Eye,
-  FileClock,
-  HardDrive,
-  History,
-  Info,
-  LoaderCircle,
-  LockKeyhole,
-  Plus,
-  RefreshCw,
-  Search,
-  ShieldAlert,
-  ShieldCheck,
-  Trash2,
-  User,
-  X,
-  XCircle,
-} from "lucide-react";
+  useRouter,
+} from "next/navigation";
 
 /* =========================================================
- * TYPES
- * ======================================================= */
+   TYPES
+========================================================= */
 
-type ActiveTab = "SAO_LUU" | "NHAT_KY";
+type UserRole =
+  | "ADMIN"
+  | "BAN_CHAP_HANH"
+  | "CHI_HOI_TRUONG"
+  | "HOI_VIEN";
 
-type ChiTietCollection = {
-  tenCollection: string;
-  soBanGhi: number;
-  dungLuong?: number;
+type CurrentUser = {
+  id: string;
+
+  username: string;
+
+  fullName: string;
+
+  role: UserRole;
 };
 
-type SaoLuuItem = {
-  _id: string;
-  maSaoLuu: string;
-  tenTep: string;
-  loaiSaoLuu: "THU_CONG" | "TU_DONG";
-  trangThai:
-    | "DANG_XU_LY"
-    | "HOAN_THANH"
-    | "THAT_BAI";
+type CollectionInfo = {
+  name: string;
 
-  gridFsFileId?: string;
-  mimeType?: string;
-  phienBan?: string;
-
-  tongSoBanGhi: number;
-  dungLuong: number;
-
-  danhSachCollection?: ChiTietCollection[];
-
-  tenDangNhap?: string;
-  hoTenNguoiTao?: string;
-
-  thoiGianBatDau: string;
-  thoiGianHoanThanh?: string;
-
-  checksum?: string;
-  ghiChu?: string;
-  loi?: string;
-
-  createdAt: string;
+  count: number;
 };
 
-type SaoLuuThongKe = {
-  tongSaoLuu: number;
-  hoanThanh: number;
-  thatBai: number;
-  dangXuLy: number;
-  tongDungLuong: number;
-  tongBanGhiDaSaoLuu: number;
-  banSaoLuuGanNhat?: SaoLuuItem | null;
+type BackupInfo = {
+  database: string;
+
+  totalCollections: number;
+
+  totalDocuments: number;
+
+  collections: CollectionInfo[];
 };
 
-type NhatKyItem = {
-  _id: string;
+type RestoreCollection = {
+  name: string;
 
-  tenDangNhap?: string;
-  hoTen?: string;
-  vaiTro?: string;
+  count: number;
 
-  hanhDong: string;
-  module: string;
-  moTa: string;
-
-  doiTuongId?: string;
-  doiTuongLoai?: string;
-
-  duLieuCu?: Record<string, unknown>;
-  duLieuMoi?: Record<string, unknown>;
-
-  diaChiIP?: string;
-  userAgent?: string;
-  duongDan?: string;
-  phuongThuc?: string;
-
-  mucDo: string;
-  ketQua: string;
-  loi?: string;
-
-  createdAt: string;
+  currentCount: number;
 };
 
-type NhatKyThongKe = {
-  tongBanGhi: number;
-  thanhCong: number;
-  thatBai: number;
-  canhBao: number;
-  nguyHiem: number;
-  trongNgay: number;
-};
+type RestorePreview = {
+  fileName: string;
 
-type PhanTrang = {
-  trangHienTai: number;
-  gioiHan: number;
-  tongBanGhi: number;
-  tongTrang: number;
-  coTrangTruoc: boolean;
-  coTrangSau: boolean;
-};
+  format: string;
 
-type SaoLuuResponse = {
-  success?: boolean;
-  message?: string;
-  data?: {
-    danhSach?: SaoLuuItem[];
-    thongKe?: Partial<SaoLuuThongKe>;
-    phanTrang?: Partial<PhanTrang>;
+  version: number;
+
+  createdAt?: string | null;
+
+  sourceDatabase?: string | null;
+
+  targetDatabase?: string | null;
+
+  createdBy?: {
+    userId?: string;
+
+    username?: string;
+
+    fullName?: string;
+
+    role?: string;
+  } | null;
+
+  summary: {
+    totalCollections: number;
+
+    totalDocuments: number;
+
+    currentTotalDocuments: number;
   };
+
+  collections: RestoreCollection[];
+
+  confirmText: string;
+
+  warning: string;
 };
 
-type NhatKyResponse = {
-  success?: boolean;
+type ApiResponse = {
+  success: boolean;
+
   message?: string;
-  data?: {
-    danhSach?: NhatKyItem[];
-    thongKe?: Partial<NhatKyThongKe>;
-    boLoc?: {
-      danhSachModule?: string[];
-      danhSachHanhDong?: string[];
-      danhSachMucDo?: string[];
-      danhSachKetQua?: string[];
+
+  user?: CurrentUser;
+
+  data?: unknown;
+};
+
+type MessageState = {
+  type:
+    | "success"
+    | "error";
+
+  text: string;
+};
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+async function parseJson(
+  response: Response,
+): Promise<ApiResponse> {
+  const text =
+    await response.text();
+
+  if (
+    !text.trim()
+  ) {
+    return {
+      success: false,
+
+      message:
+        `Máy chủ không trả dữ liệu. HTTP ${response.status}`,
     };
-    phanTrang?: Partial<PhanTrang>;
-  };
-};
+  }
 
-type StatCardProps = {
-  title: string;
-  value: string;
-  description: string;
-  icon: ReactNode;
-  iconClassName: string;
-};
+  try {
+    return JSON.parse(
+      text,
+    ) as ApiResponse;
+  } catch {
+    console.error(
+      "Response không phải JSON:",
+      {
+        url:
+          response.url,
 
-/* =========================================================
- * CONSTANTS
- * ======================================================= */
+        status:
+          response.status,
 
-const DEFAULT_PAGINATION: PhanTrang = {
-  trangHienTai: 1,
-  gioiHan: 10,
-  tongBanGhi: 0,
-  tongTrang: 1,
-  coTrangTruoc: false,
-  coTrangSau: false,
-};
+        body:
+          text.slice(
+            0,
+            500,
+          ),
+      },
+    );
 
-const DEFAULT_BACKUP_STATISTIC: SaoLuuThongKe = {
-  tongSaoLuu: 0,
-  hoanThanh: 0,
-  thatBai: 0,
-  dangXuLy: 0,
-  tongDungLuong: 0,
-  tongBanGhiDaSaoLuu: 0,
-  banSaoLuuGanNhat: null,
-};
+    return {
+      success: false,
 
-const DEFAULT_LOG_STATISTIC: NhatKyThongKe = {
-  tongBanGhi: 0,
-  thanhCong: 0,
-  thatBai: 0,
-  canhBao: 0,
-  nguyHiem: 0,
-  trongNgay: 0,
-};
+      message:
+        `API trả dữ liệu không hợp lệ. HTTP ${response.status}`,
+    };
+  }
+}
 
-const ACTION_LABELS: Record<string, string> = {
-  DANG_NHAP: "Đăng nhập",
-  DANG_XUAT: "Đăng xuất",
-  DANG_NHAP_THAT_BAI: "Đăng nhập thất bại",
-  TAO_MOI: "Tạo mới",
-  CAP_NHAT: "Cập nhật",
-  XOA: "Xóa dữ liệu",
-  KHOA_TAI_KHOAN: "Khóa tài khoản",
-  MO_KHOA_TAI_KHOAN: "Mở khóa tài khoản",
-  DOI_MAT_KHAU: "Đổi mật khẩu",
-  DAT_LAI_MAT_KHAU: "Đặt lại mật khẩu",
-  CAP_TAI_KHOAN: "Cấp tài khoản",
-  XUAT_EXCEL: "Xuất Excel",
-  SAO_LUU: "Sao lưu",
-  KHOI_PHUC: "Khôi phục",
-  KHAC: "Khác",
-};
+function getId(
+  value: unknown,
+) {
+  if (!value) {
+    return "";
+  }
 
-const MODULE_LABELS: Record<string, string> = {
-  XAC_THUC: "Xác thực",
-  NGUOI_DUNG: "Người dùng",
-  HOI_VIEN: "Hội viên",
-  CHI_HOI: "Chi hội",
-  BAN_CHAP_HANH: "Ban Chấp hành",
-  HOAT_DONG: "Hoạt động",
-  THONG_BAO: "Thông báo",
-  DANH_GIA: "Đánh giá",
-  THONG_KE: "Thống kê",
-  SAO_LUU: "Sao lưu",
-  HE_THONG: "Hệ thống",
-};
+  if (
+    typeof value ===
+    "string"
+  ) {
+    return value;
+  }
 
-/* =========================================================
- * HELPERS
- * ======================================================= */
+  if (
+    typeof value ===
+    "object"
+  ) {
+    const item =
+      value as Record<
+        string,
+        unknown
+      >;
 
-function formatNumber(value: unknown) {
-  const number = Number(value);
+    return String(
+      item.id ??
+        item._id ??
+        item.userId ??
+        "",
+    );
+  }
 
-  return new Intl.NumberFormat("vi-VN").format(
-    Number.isFinite(number) ? number : 0,
+  return String(
+    value,
   );
 }
 
-function formatBytes(value: unknown) {
-  const bytes = Number(value);
+function formatNumber(
+  value: number,
+) {
+  return new Intl.NumberFormat(
+    "vi-VN",
+  ).format(
+    Number.isFinite(
+      value,
+    )
+      ? value
+      : 0,
+  );
+}
 
-  if (!Number.isFinite(bytes) || bytes <= 0) {
+function formatDateTime(
+  value?:
+    string | null,
+) {
+  if (!value) {
+    return "—";
+  }
+
+  const date =
+    new Date(
+      value,
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat(
+    "vi-VN",
+    {
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+
+      day:
+        "2-digit",
+
+      month:
+        "2-digit",
+
+      year:
+        "numeric",
+    },
+  ).format(
+    date,
+  );
+}
+
+function formatFileSize(
+  bytes: number,
+) {
+  if (
+    bytes <=
+    0
+  ) {
     return "0 B";
   }
 
@@ -257,2416 +294,1908 @@ function formatBytes(value: unknown) {
     "KB",
     "MB",
     "GB",
-    "TB",
   ];
 
-  const unitIndex = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1,
-  );
+  const index =
+    Math.min(
+      Math.floor(
+        Math.log(
+          bytes,
+        ) /
+          Math.log(
+            1024,
+          ),
+      ),
+      units.length -
+        1,
+    );
 
-  const result =
-    bytes / Math.pow(1024, unitIndex);
+  const value =
+    bytes /
+    Math.pow(
+      1024,
+      index,
+    );
 
-  return `${result.toFixed(
-    unitIndex === 0 ? 0 : 2,
-  )} ${units[unitIndex]}`;
+  return `${value.toFixed(
+    index ===
+      0
+      ? 0
+      : 2,
+  )} ${units[index]}`;
 }
 
-function formatDateTime(value?: string) {
-  if (!value) return "—";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  return new Intl.DateTimeFormat("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour12: false,
-  }).format(date);
-}
-
-function getActionLabel(value?: string) {
-  if (!value) return "Chưa xác định";
-
-  return (
-    ACTION_LABELS[value] ??
-    value.replaceAll("_", " ")
-  );
-}
-
-function getModuleLabel(value?: string) {
-  if (!value) return "Chưa xác định";
-
-  return (
-    MODULE_LABELS[value] ??
-    value.replaceAll("_", " ")
-  );
-}
-
-function getRoleLabel(value?: string) {
-  switch (value) {
-    case "ADMIN":
-      return "Quản trị viên";
-
-    case "BAN_CHAP_HANH":
-      return "Ban Chấp hành";
-
-    case "CHI_HOI_TRUONG":
-      return "Chi hội trưởng";
-
-    case "HOI_VIEN":
-      return "Hội viên";
-
-    default:
-      return value || "Hệ thống";
-  }
-}
-
-function getBackupStatusLabel(value?: string) {
-  switch (value) {
-    case "DANG_XU_LY":
-      return "Đang xử lý";
-
-    case "HOAN_THANH":
-      return "Hoàn thành";
-
-    case "THAT_BAI":
-      return "Thất bại";
-
-    default:
-      return value || "Chưa xác định";
-  }
-}
-
-function getBackupStatusClass(value?: string) {
-  switch (value) {
-    case "DANG_XU_LY":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-
-    case "HOAN_THANH":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-
-    case "THAT_BAI":
-      return "border-red-200 bg-red-50 text-red-700";
-
-    default:
-      return "border-slate-200 bg-slate-50 text-slate-700";
-  }
-}
-
-function getActionClass(value?: string) {
-  switch (value) {
-    case "DANG_NHAP":
-    case "MO_KHOA_TAI_KHOAN":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-
-    case "TAO_MOI":
-    case "CAP_TAI_KHOAN":
-      return "border-blue-200 bg-blue-50 text-blue-700";
-
-    case "CAP_NHAT":
-    case "DOI_MAT_KHAU":
-    case "DAT_LAI_MAT_KHAU":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-
-    case "DANG_NHAP_THAT_BAI":
-    case "XOA":
-    case "KHOA_TAI_KHOAN":
-      return "border-red-200 bg-red-50 text-red-700";
-
-    case "SAO_LUU":
-    case "KHOI_PHUC":
-      return "border-violet-200 bg-violet-50 text-violet-700";
-
-    default:
-      return "border-slate-200 bg-slate-50 text-slate-700";
-  }
-}
-
-function getLevelLabel(value?: string) {
-  switch (value) {
-    case "THONG_TIN":
-      return "Thông tin";
-
-    case "CANH_BAO":
-      return "Cảnh báo";
-
-    case "NGUY_HIEM":
-      return "Nguy hiểm";
-
-    default:
-      return value || "Chưa xác định";
-  }
-}
-
-function getLevelClass(value?: string) {
-  switch (value) {
-    case "THONG_TIN":
-      return "border-blue-200 bg-blue-50 text-blue-700";
-
-    case "CANH_BAO":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-
-    case "NGUY_HIEM":
-      return "border-red-200 bg-red-50 text-red-700";
-
-    default:
-      return "border-slate-200 bg-slate-50 text-slate-700";
-  }
-}
-
-function stringifyData(
-  value?: Record<string, unknown>,
+function getDownloadFileName(
+  disposition:
+    string | null,
 ) {
-  if (!value || Object.keys(value).length === 0) {
-    return "Không có dữ liệu";
+  if (
+    !disposition
+  ) {
+    return "";
   }
 
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return "Không thể hiển thị dữ liệu";
-  }
-}
-
-async function readJson<T>(
-  response: Response,
-): Promise<T> {
-  const contentType =
-    response.headers.get("content-type") ?? "";
-
-  if (!contentType.includes("application/json")) {
-    const text = await response.text();
-
-    throw new Error(
-      text ||
-        `Máy chủ trả về dữ liệu không hợp lệ (${response.status})`,
-    );
-  }
-
-  try {
-    return (await response.json()) as T;
-  } catch {
-    throw new Error(
-      "Không thể đọc dữ liệu từ máy chủ",
-    );
-  }
-}
-
-/* =========================================================
- * STAT CARD
- * ======================================================= */
-
-function StatCard({
-  title,
-  value,
-  description,
-  icon,
-  iconClassName,
-}: StatCardProps) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold text-slate-500">
-            {title}
-          </p>
-
-          <p className="mt-2 text-3xl font-bold text-slate-950">
-            {value}
-          </p>
-
-          <p className="mt-2 text-xs leading-5 text-slate-500">
-            {description}
-          </p>
-        </div>
-
-        <div
-          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${iconClassName}`}
-        >
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
- * MODAL WRAPPER
- * ======================================================= */
-
-function Modal({
-  children,
-  onClose,
-  maxWidth = "max-w-2xl",
-}: {
-  children: ReactNode;
-  onClose: () => void;
-  maxWidth?: string;
-}) {
-  useEffect(() => {
-    const handleKeyDown = (
-      event: KeyboardEvent,
-    ) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener(
-      "keydown",
-      handleKeyDown,
+  const utf8Match =
+    disposition.match(
+      /filename\*=UTF-8''([^;]+)/i,
     );
 
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown,
+  if (
+    utf8Match?.[1]
+  ) {
+    try {
+      return decodeURIComponent(
+        utf8Match[1]
+          .replace(
+            /["']/g,
+            "",
+          )
+          .trim(),
       );
+    } catch {
+      return utf8Match[1]
+        .replace(
+          /["']/g,
+          "",
+        )
+        .trim();
+    }
+  }
 
-      document.body.style.overflow = "";
-    };
-  }, [onClose]);
+  const normalMatch =
+    disposition.match(
+      /filename="?([^"]+)"?/i,
+    );
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div
-        className={`max-h-[92vh] w-full overflow-hidden rounded-2xl bg-white shadow-2xl ${maxWidth}`}
-      >
-        {children}
-      </div>
-    </div>
+    normalMatch?.[1]
+      ?.trim() ||
+    ""
   );
 }
 
 /* =========================================================
- * CREATE BACKUP MODAL
- * ======================================================= */
-
-function CreateBackupModal({
-  creating,
-  onClose,
-  onSubmit,
-}: {
-  creating: boolean;
-  onClose: () => void;
-  onSubmit: (note: string) => Promise<void>;
-}) {
-  const [note, setNote] = useState("");
-
-  return (
-    <Modal onClose={onClose}>
-      <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-        <div className="flex gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
-            <Database size={22} />
-          </div>
-
-          <div>
-            <h2 className="text-xl font-bold text-slate-950">
-              Tạo bản sao lưu
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Sao lưu toàn bộ dữ liệu hệ thống.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          disabled={creating}
-          onClick={onClose}
-          className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
-        >
-          <X size={20} />
-        </button>
-      </div>
-
-      <div className="p-6">
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-          <div className="flex items-start gap-3">
-            <Info
-              size={20}
-              className="mt-0.5 shrink-0 text-blue-700"
-            />
-
-            <div className="text-sm leading-6 text-blue-800">
-              <p className="font-bold">
-                Dữ liệu sẽ được lưu trong MongoDB GridFS
-              </p>
-
-              <p className="mt-1">
-                Quá trình có thể mất một khoảng thời gian
-                tùy theo số lượng dữ liệu.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <label className="mt-5 block">
-          <span className="mb-2 block text-sm font-semibold text-slate-700">
-            Ghi chú
-          </span>
-
-          <textarea
-            value={note}
-            onChange={(event) =>
-              setNote(event.target.value)
-            }
-            maxLength={1000}
-            rows={4}
-            placeholder="Nhập lý do hoặc nội dung sao lưu..."
-            className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-          />
-
-          <span className="mt-1 block text-right text-xs text-slate-400">
-            {note.length}/1000
-          </span>
-        </label>
-      </div>
-
-      <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={creating}
-          className="h-10 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-        >
-          Đóng
-        </button>
-
-        <button
-          type="button"
-          disabled={creating}
-          onClick={() => void onSubmit(note)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-800 px-5 text-sm font-semibold text-white hover:bg-blue-900 disabled:opacity-60"
-        >
-          {creating ? (
-            <LoaderCircle
-              size={17}
-              className="animate-spin"
-            />
-          ) : (
-            <Archive size={17} />
-          )}
-
-          {creating
-            ? "Đang sao lưu..."
-            : "Tạo bản sao lưu"}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-/* =========================================================
- * BACKUP DETAIL MODAL
- * ======================================================= */
-
-function BackupDetailModal({
-  item,
-  downloading,
-  onClose,
-  onDownload,
-}: {
-  item: SaoLuuItem;
-  downloading: boolean;
-  onClose: () => void;
-  onDownload: (item: SaoLuuItem) => Promise<void>;
-}) {
-  return (
-    <Modal
-      onClose={onClose}
-      maxWidth="max-w-4xl"
-    >
-      <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-        <div className="flex gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
-            <HardDrive size={22} />
-          </div>
-
-          <div>
-            <h2 className="text-xl font-bold text-slate-950">
-              Chi tiết bản sao lưu
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              {item.maSaoLuu}
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
-        >
-          <X size={20} />
-        </button>
-      </div>
-
-      <div className="max-h-[70vh] overflow-y-auto p-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase text-slate-500">
-              Trạng thái
-            </p>
-
-            <span
-              className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-bold ${getBackupStatusClass(
-                item.trangThai,
-              )}`}
-            >
-              {getBackupStatusLabel(
-                item.trangThai,
-              )}
-            </span>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase text-slate-500">
-              Dung lượng
-            </p>
-
-            <p className="mt-2 font-bold text-slate-900">
-              {formatBytes(item.dungLuong)}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase text-slate-500">
-              Tổng bản ghi
-            </p>
-
-            <p className="mt-2 font-bold text-slate-900">
-              {formatNumber(item.tongSoBanGhi)}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase text-slate-500">
-              Loại sao lưu
-            </p>
-
-            <p className="mt-2 font-bold text-slate-900">
-              {item.loaiSaoLuu === "TU_DONG"
-                ? "Tự động"
-                : "Thủ công"}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="font-bold text-slate-800">
-              Thông tin file
-            </p>
-
-            <dl className="mt-4 space-y-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">
-                  Tên file
-                </dt>
-
-                <dd className="max-w-[65%] break-all text-right font-medium text-slate-800">
-                  {item.tenTep}
-                </dd>
-              </div>
-
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">
-                  Phiên bản
-                </dt>
-
-                <dd className="font-medium text-slate-800">
-                  {item.phienBan || "1.0"}
-                </dd>
-              </div>
-
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">
-                  Bắt đầu
-                </dt>
-
-                <dd className="text-right font-medium text-slate-800">
-                  {formatDateTime(
-                    item.thoiGianBatDau,
-                  )}
-                </dd>
-              </div>
-
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">
-                  Hoàn thành
-                </dt>
-
-                <dd className="text-right font-medium text-slate-800">
-                  {formatDateTime(
-                    item.thoiGianHoanThanh,
-                  )}
-                </dd>
-              </div>
-            </dl>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="font-bold text-slate-800">
-              Người tạo
-            </p>
-
-            <dl className="mt-4 space-y-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">
-                  Họ tên
-                </dt>
-
-                <dd className="font-medium text-slate-800">
-                  {item.hoTenNguoiTao ||
-                    "Không xác định"}
-                </dd>
-              </div>
-
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">
-                  Tài khoản
-                </dt>
-
-                <dd className="font-medium text-slate-800">
-                  {item.tenDangNhap || "—"}
-                </dd>
-              </div>
-
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">
-                  Ghi chú
-                </dt>
-
-                <dd className="max-w-[65%] text-right font-medium text-slate-800">
-                  {item.ghiChu || "Không có"}
-                </dd>
-              </div>
-            </dl>
-          </div>
-        </div>
-
-        {item.checksum && (
-          <div className="mt-5 rounded-xl border border-slate-200 p-4">
-            <p className="font-bold text-slate-800">
-              Checksum SHA-256
-            </p>
-
-            <p className="mt-2 break-all rounded-lg bg-slate-950 p-3 font-mono text-xs leading-6 text-emerald-300">
-              {item.checksum}
-            </p>
-          </div>
-        )}
-
-        {item.loi && (
-          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            <p className="font-bold">
-              Lỗi sao lưu
-            </p>
-
-            <p className="mt-1 whitespace-pre-wrap">
-              {item.loi}
-            </p>
-          </div>
-        )}
-
-        <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
-          <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="font-bold text-slate-800">
-              Danh sách collection
-            </p>
-          </div>
-
-          <div className="max-h-72 overflow-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200 text-left">
-                  <th className="px-4 py-3 text-xs font-bold uppercase text-slate-500">
-                    Collection
-                  </th>
-
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">
-                    Bản ghi
-                  </th>
-
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">
-                    Dung lượng
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {(item.danhSachCollection ?? []).map(
-                  (collection, index) => (
-                    <tr
-                      key={`${collection.tenCollection}-${index}`}
-                      className="border-b border-slate-100 last:border-0"
-                    >
-                      <td className="px-4 py-3 font-mono text-sm text-slate-700">
-                        {collection.tenCollection}
-                      </td>
-
-                      <td className="px-4 py-3 text-right text-sm font-medium text-slate-700">
-                        {formatNumber(
-                          collection.soBanGhi,
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3 text-right text-sm text-slate-500">
-                        {formatBytes(
-                          collection.dungLuong,
-                        )}
-                      </td>
-                    </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
-
-            {!item.danhSachCollection?.length && (
-              <p className="p-6 text-center text-sm text-slate-500">
-                Không có thông tin collection.
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-10 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          Đóng
-        </button>
-
-        {item.trangThai === "HOAN_THANH" && (
-          <button
-            type="button"
-            disabled={downloading}
-            onClick={() => void onDownload(item)}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-800 px-5 text-sm font-semibold text-white hover:bg-blue-900 disabled:opacity-60"
-          >
-            {downloading ? (
-              <LoaderCircle
-                size={17}
-                className="animate-spin"
-              />
-            ) : (
-              <Download size={17} />
-            )}
-
-            Tải xuống
-          </button>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
-/* =========================================================
- * DELETE MODAL
- * ======================================================= */
-
-function DeleteBackupModal({
-  item,
-  deleting,
-  onClose,
-  onDelete,
-}: {
-  item: SaoLuuItem;
-  deleting: boolean;
-  onClose: () => void;
-  onDelete: () => Promise<void>;
-}) {
-  return (
-    <Modal onClose={onClose}>
-      <div className="p-6">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600">
-          <Trash2 size={27} />
-        </div>
-
-        <h2 className="mt-5 text-xl font-bold text-slate-950">
-          Xóa bản sao lưu?
-        </h2>
-
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          Bản sao lưu{" "}
-          <strong>{item.maSaoLuu}</strong> và file
-          trong GridFS sẽ bị xóa vĩnh viễn. Thao tác
-          này không thể hoàn tác.
-        </p>
-
-        <div className="mt-5 flex justify-end gap-3">
-          <button
-            type="button"
-            disabled={deleting}
-            onClick={onClose}
-            className="h-10 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Hủy
-          </button>
-
-          <button
-            type="button"
-            disabled={deleting}
-            onClick={() => void onDelete()}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
-          >
-            {deleting ? (
-              <LoaderCircle
-                size={17}
-                className="animate-spin"
-              />
-            ) : (
-              <Trash2 size={17} />
-            )}
-
-            Xóa bản sao lưu
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-/* =========================================================
- * LOG DETAIL MODAL
- * ======================================================= */
-
-function LogDetailModal({
-  item,
-  onClose,
-}: {
-  item: NhatKyItem;
-  onClose: () => void;
-}) {
-  return (
-    <Modal
-      onClose={onClose}
-      maxWidth="max-w-4xl"
-    >
-      <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-        <div>
-          <h2 className="text-xl font-bold text-slate-950">
-            Chi tiết nhật ký
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500">
-            {formatDateTime(item.createdAt)}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
-        >
-          <X size={20} />
-        </button>
-      </div>
-
-      <div className="max-h-[72vh] overflow-y-auto p-6">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs font-bold uppercase text-slate-500">
-              Người thực hiện
-            </p>
-
-            <p className="mt-2 font-bold text-slate-900">
-              {item.hoTen ||
-                item.tenDangNhap ||
-                "Hệ thống"}
-            </p>
-
-            <p className="mt-1 text-xs text-slate-500">
-              {getRoleLabel(item.vaiTro)}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs font-bold uppercase text-slate-500">
-              Hành động
-            </p>
-
-            <p className="mt-2 font-bold text-slate-900">
-              {getActionLabel(item.hanhDong)}
-            </p>
-
-            <p className="mt-1 text-xs text-slate-500">
-              {getModuleLabel(item.module)}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-xl border border-slate-200 p-4">
-          <p className="text-xs font-bold uppercase text-slate-500">
-            Nội dung
-          </p>
-
-          <p className="mt-2 text-sm leading-6 text-slate-800">
-            {item.moTa}
-          </p>
-        </div>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 p-4 text-sm">
-            <p className="font-bold text-slate-800">
-              Thông tin truy cập
-            </p>
-
-            <div className="mt-3 space-y-2 text-slate-600">
-              <p>IP: {item.diaChiIP || "—"}</p>
-              <p>
-                Phương thức:{" "}
-                {item.phuongThuc || "—"}
-              </p>
-              <p className="break-all">
-                Đường dẫn: {item.duongDan || "—"}
-              </p>
-              <p>
-                Mức độ:{" "}
-                {getLevelLabel(item.mucDo)}
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 p-4 text-sm">
-            <p className="font-bold text-slate-800">
-              Kết quả
-            </p>
-
-            <p
-              className={`mt-3 font-bold ${
-                item.ketQua === "THANH_CONG"
-                  ? "text-emerald-700"
-                  : "text-red-700"
-              }`}
-            >
-              {item.ketQua === "THANH_CONG"
-                ? "Thành công"
-                : "Thất bại"}
-            </p>
-
-            {item.loi && (
-              <p className="mt-2 whitespace-pre-wrap text-red-600">
-                {item.loi}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div>
-            <p className="mb-2 font-bold text-slate-800">
-              Dữ liệu cũ
-            </p>
-
-            <pre className="max-h-72 overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-6 text-slate-200">
-              {stringifyData(item.duLieuCu)}
-            </pre>
-          </div>
-
-          <div>
-            <p className="mb-2 font-bold text-slate-800">
-              Dữ liệu mới
-            </p>
-
-            <pre className="max-h-72 overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-6 text-slate-200">
-              {stringifyData(item.duLieuMoi)}
-            </pre>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex justify-end border-t border-slate-200 px-6 py-4">
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-10 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          Đóng
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-/* =========================================================
- * MAIN PAGE
- * ======================================================= */
+   PAGE
+========================================================= */
 
 export default function SaoLuuPage() {
-  const [activeTab, setActiveTab] =
-    useState<ActiveTab>("SAO_LUU");
+  const router =
+    useRouter();
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  /* Backup states */
-  const [backupList, setBackupList] = useState<
-    SaoLuuItem[]
-  >([]);
-
-  const [backupStatistic, setBackupStatistic] =
-    useState<SaoLuuThongKe>(
-      DEFAULT_BACKUP_STATISTIC,
+  const fileInputRef =
+    useRef<HTMLInputElement | null>(
+      null,
     );
 
-  const [backupPagination, setBackupPagination] =
-    useState<PhanTrang>(DEFAULT_PAGINATION);
-
-  const [backupPage, setBackupPage] = useState(1);
-  const [backupSearch, setBackupSearch] =
-    useState("");
-  const [backupStatus, setBackupStatus] =
-    useState("");
-  const [backupType, setBackupType] =
-    useState("");
-
-  const [backupLoading, setBackupLoading] =
-    useState(true);
-  const [creating, setCreating] = useState(false);
-  const [downloadingId, setDownloadingId] =
-    useState("");
-  const [deleting, setDeleting] =
-    useState(false);
-
-  const [showCreateModal, setShowCreateModal] =
-    useState(false);
-
-  const [selectedBackup, setSelectedBackup] =
-    useState<SaoLuuItem | null>(null);
-
-  const [deleteBackup, setDeleteBackup] =
-    useState<SaoLuuItem | null>(null);
-
-  /* Log states */
-  const [logList, setLogList] = useState<
-    NhatKyItem[]
-  >([]);
-
-  const [logStatistic, setLogStatistic] =
-    useState<NhatKyThongKe>(
-      DEFAULT_LOG_STATISTIC,
+  const [
+    currentUser,
+    setCurrentUser,
+  ] =
+    useState<CurrentUser | null>(
+      null,
     );
 
-  const [logPagination, setLogPagination] =
-    useState<PhanTrang>(DEFAULT_PAGINATION);
+  const [
+    backupInfo,
+    setBackupInfo,
+  ] =
+    useState<BackupInfo | null>(
+      null,
+    );
 
-  const [logModules, setLogModules] = useState<
-    string[]
-  >([]);
+  const [
+    selectedFile,
+    setSelectedFile,
+  ] =
+    useState<File | null>(
+      null,
+    );
 
-  const [logActions, setLogActions] = useState<
-    string[]
-  >([]);
+  const [
+    preview,
+    setPreview,
+  ] =
+    useState<RestorePreview | null>(
+      null,
+    );
 
-  const [logPage, setLogPage] = useState(1);
-  const [logSearch, setLogSearch] = useState("");
-  const [logModule, setLogModule] = useState("");
-  const [logAction, setLogAction] = useState("");
-  const [logLevel, setLogLevel] = useState("");
-  const [logResult, setLogResult] = useState("");
+  const [
+    confirmText,
+    setConfirmText,
+  ] =
+    useState(
+      "",
+    );
 
-  const [logLoading, setLogLoading] =
-    useState(false);
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(
+      true,
+    );
 
-  const [selectedLog, setSelectedLog] =
-    useState<NhatKyItem | null>(null);
+  const [
+    refreshing,
+    setRefreshing,
+  ] =
+    useState(
+      false,
+    );
 
-  const backupRequestRef = useRef(0);
-  const logRequestRef = useRef(0);
+  const [
+    backupLoading,
+    setBackupLoading,
+  ] =
+    useState(
+      false,
+    );
 
-  /* =======================================================
-   * LOAD BACKUPS
-   * ===================================================== */
+  const [
+    previewLoading,
+    setPreviewLoading,
+  ] =
+    useState(
+      false,
+    );
 
-  const loadBackups = useCallback(async () => {
-    const requestId = ++backupRequestRef.current;
+  const [
+    restoreLoading,
+    setRestoreLoading,
+  ] =
+    useState(
+      false,
+    );
 
-    try {
-      setBackupLoading(true);
-      setError("");
+  const [
+    showRestoreConfirm,
+    setShowRestoreConfirm,
+  ] =
+    useState(
+      false,
+    );
 
-      const params = new URLSearchParams();
-
-      params.set("page", backupPage.toString());
-      params.set("limit", "10");
-
-      if (backupSearch.trim()) {
-        params.set(
-          "search",
-          backupSearch.trim(),
-        );
-      }
-
-      if (backupStatus) {
-        params.set(
-          "trangThai",
-          backupStatus,
-        );
-      }
-
-      if (backupType) {
-        params.set(
-          "loaiSaoLuu",
-          backupType,
-        );
-      }
-
-      const response = await fetch(
-        `/api/sao-luu?${params.toString()}`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        },
-      );
-
-      const result =
-        await readJson<SaoLuuResponse>(response);
-
-      if (
-        !response.ok ||
-        result.success === false
-      ) {
-        throw new Error(
-          result.message ||
-            "Không thể tải lịch sử sao lưu",
-        );
-      }
-
-      if (requestId !== backupRequestRef.current) {
-        return;
-      }
-
-      setBackupList(
-        Array.isArray(result.data?.danhSach)
-          ? result.data.danhSach
-          : [],
-      );
-
-      setBackupStatistic({
-        ...DEFAULT_BACKUP_STATISTIC,
-        ...(result.data?.thongKe ?? {}),
-      });
-
-      setBackupPagination({
-        ...DEFAULT_PAGINATION,
-        ...(result.data?.phanTrang ?? {}),
-      });
-    } catch (loadError) {
-      if (requestId !== backupRequestRef.current) {
-        return;
-      }
-
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Không thể tải lịch sử sao lưu",
-      );
-    } finally {
-      if (requestId === backupRequestRef.current) {
-        setBackupLoading(false);
-      }
-    }
-  }, [
-    backupPage,
-    backupSearch,
-    backupStatus,
-    backupType,
-  ]);
+  const [
+    message,
+    setMessage,
+  ] =
+    useState<MessageState | null>(
+      null,
+    );
 
   /* =======================================================
-   * LOAD LOGS
-   * ===================================================== */
+     CURRENT USER
+  ======================================================= */
 
-  const loadLogs = useCallback(async () => {
-    const requestId = ++logRequestRef.current;
+  const loadCurrentUser =
+    useCallback(
+      async () => {
+        const response =
+          await fetch(
+            "/api/auth/me",
+            {
+              credentials:
+                "include",
 
-    try {
-      setLogLoading(true);
-      setError("");
+              cache:
+                "no-store",
+            },
+          );
 
-      const params = new URLSearchParams();
+        const result =
+          await parseJson(
+            response,
+          );
 
-      params.set("page", logPage.toString());
-      params.set("limit", "15");
+        if (
+          response.status ===
+            401 ||
+          !result.success
+        ) {
+          router.replace(
+            "/login",
+          );
 
-      if (logSearch.trim()) {
-        params.set("search", logSearch.trim());
-      }
+          return null;
+        }
 
-      if (logModule) {
-        params.set("module", logModule);
-      }
+        let user =
+          result.user;
 
-      if (logAction) {
-        params.set("hanhDong", logAction);
-      }
+        if (
+          !user &&
+          result.data &&
+          typeof result.data ===
+            "object"
+        ) {
+          const raw =
+            result.data as Record<
+              string,
+              unknown
+            >;
 
-      if (logLevel) {
-        params.set("mucDo", logLevel);
-      }
+          const source =
+            raw.user &&
+            typeof raw.user ===
+              "object"
+              ? raw.user as Record<
+                  string,
+                  unknown
+                >
+              : raw;
 
-      if (logResult) {
-        params.set("ketQua", logResult);
-      }
+          user = {
+            id:
+              getId(
+                source.id ??
+                  source._id ??
+                  source.userId,
+              ),
 
-      const response = await fetch(
-        `/api/nhat-ky?${params.toString()}`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        },
-      );
+            username:
+              String(
+                source.username ??
+                  "",
+              ),
 
-      const result =
-        await readJson<NhatKyResponse>(response);
+            fullName:
+              String(
+                source.fullName ??
+                  source.hoTen ??
+                  source.username ??
+                  "",
+              ),
 
-      if (
-        !response.ok ||
-        result.success === false
-      ) {
-        throw new Error(
-          result.message ||
-            "Không thể tải nhật ký hệ thống",
+            role:
+              String(
+                source.role ??
+                  "",
+              ) as UserRole,
+          };
+        }
+
+        if (
+          !user ||
+          user.role !==
+            "ADMIN"
+        ) {
+          router.replace(
+            "/dashboard",
+          );
+
+          return null;
+        }
+
+        setCurrentUser(
+          user,
         );
-      }
 
-      if (requestId !== logRequestRef.current) {
-        return;
-      }
-
-      setLogList(
-        Array.isArray(result.data?.danhSach)
-          ? result.data.danhSach
-          : [],
-      );
-
-      setLogStatistic({
-        ...DEFAULT_LOG_STATISTIC,
-        ...(result.data?.thongKe ?? {}),
-      });
-
-      setLogPagination({
-        ...DEFAULT_PAGINATION,
-        ...(result.data?.phanTrang ?? {}),
-      });
-
-      setLogModules(
-        Array.isArray(
-          result.data?.boLoc?.danhSachModule,
-        )
-          ? result.data?.boLoc
-              ?.danhSachModule ?? []
-          : [],
-      );
-
-      setLogActions(
-        Array.isArray(
-          result.data?.boLoc
-            ?.danhSachHanhDong,
-        )
-          ? result.data?.boLoc
-              ?.danhSachHanhDong ?? []
-          : [],
-      );
-    } catch (loadError) {
-      if (requestId !== logRequestRef.current) {
-        return;
-      }
-
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Không thể tải nhật ký hệ thống",
-      );
-    } finally {
-      if (requestId === logRequestRef.current) {
-        setLogLoading(false);
-      }
-    }
-  }, [
-    logPage,
-    logSearch,
-    logModule,
-    logAction,
-    logLevel,
-    logResult,
-  ]);
-
-  useEffect(() => {
-    if (activeTab !== "SAO_LUU") return;
-
-    const timeout = window.setTimeout(() => {
-      void loadBackups();
-    }, 350);
-
-    return () => window.clearTimeout(timeout);
-  }, [activeTab, loadBackups]);
-
-  useEffect(() => {
-    if (activeTab !== "NHAT_KY") return;
-
-    const timeout = window.setTimeout(() => {
-      void loadLogs();
-    }, 350);
-
-    return () => window.clearTimeout(timeout);
-  }, [activeTab, loadLogs]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep pagination synchronized with filters and the available results.
-    setBackupPage(1);
-  }, [backupSearch, backupStatus, backupType]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep pagination synchronized with filters and the available results.
-    setLogPage(1);
-  }, [
-    logSearch,
-    logModule,
-    logAction,
-    logLevel,
-    logResult,
-  ]);
+        return user;
+      },
+      [
+        router,
+      ],
+    );
 
   /* =======================================================
-   * ACTIONS
-   * ===================================================== */
+     BACKUP INFO
+  ======================================================= */
 
-  const createBackup = async (note: string) => {
-    try {
-      setCreating(true);
-      setError("");
-      setSuccess("");
+  const loadBackupInfo =
+    useCallback(
+      async (
+        showRefresh =
+          false,
+      ) => {
+        try {
+          if (
+            showRefresh
+          ) {
+            setRefreshing(
+              true,
+            );
+          }
 
-      const response = await fetch(
-        "/api/sao-luu",
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
+          const response =
+            await fetch(
+              "/api/sao-luu",
+              {
+                credentials:
+                  "include",
+
+                cache:
+                  "no-store",
+              },
+            );
+
+          const result =
+            await parseJson(
+              response,
+            );
+
+          if (
+            response.status ===
+              401
+          ) {
+            router.replace(
+              "/login",
+            );
+
+            return;
+          }
+
+          if (
+            response.status ===
+              403
+          ) {
+            router.replace(
+              "/dashboard",
+            );
+
+            return;
+          }
+
+          if (
+            !response.ok ||
+            !result.success ||
+            !result.data
+          ) {
+            throw new Error(
+              result.message ||
+                "Không thể lấy thông tin sao lưu",
+            );
+          }
+
+          setBackupInfo(
+            result.data as BackupInfo,
+          );
+        } catch (
+          error
+        ) {
+          setMessage({
+            type:
+              "error",
+
+            text:
+              error instanceof
+                Error
+                ? error.message
+                : "Không thể lấy thông tin sao lưu",
+          });
+        } finally {
+          setRefreshing(
+            false,
+          );
+        }
+      },
+      [
+        router,
+      ],
+    );
+
+  /* =======================================================
+     INITIAL
+  ======================================================= */
+
+  useEffect(
+    () => {
+      const timer =
+        window.setTimeout(
+          () => {
+            void (
+              async () => {
+                try {
+                  setLoading(
+                    true,
+                  );
+
+                  const user =
+                    await loadCurrentUser();
+
+                  if (!user) {
+                    return;
+                  }
+
+                  await loadBackupInfo();
+                } finally {
+                  setLoading(
+                    false,
+                  );
+                }
+              }
+            )();
           },
-          body: JSON.stringify({
-            ghiChu: note.trim(),
-            loaiSaoLuu: "THU_CONG",
-          }),
-        },
+          0,
+        );
+
+      return () => {
+        window.clearTimeout(
+          timer,
+        );
+      };
+    },
+    [
+      loadBackupInfo,
+      loadCurrentUser,
+    ],
+  );
+
+  /* =======================================================
+     MESSAGE
+  ======================================================= */
+
+  function showMessage(
+    type:
+      MessageState["type"],
+
+    text:
+      string,
+  ) {
+    setMessage({
+      type,
+      text,
+    });
+
+    window.scrollTo({
+      top: 0,
+
+      behavior:
+        "smooth",
+    });
+  }
+
+  /* =======================================================
+     CREATE BACKUP
+  ======================================================= */
+
+  async function handleCreateBackup() {
+    try {
+      setBackupLoading(
+        true,
       );
 
-      const result =
-        await readJson<SaoLuuResponse>(response);
+      setMessage(
+        null,
+      );
+
+      const response =
+        await fetch(
+          "/api/sao-luu",
+          {
+            method:
+              "POST",
+
+            credentials:
+              "include",
+
+            cache:
+              "no-store",
+          },
+        );
 
       if (
-        !response.ok ||
-        result.success === false
+        response.status ===
+          401
       ) {
+        router.replace(
+          "/login",
+        );
+
+        return;
+      }
+
+      if (
+        response.status ===
+          403
+      ) {
+        router.replace(
+          "/dashboard",
+        );
+
+        return;
+      }
+
+      if (
+        !response.ok
+      ) {
+        const result =
+          await parseJson(
+            response,
+          );
+
         throw new Error(
           result.message ||
             "Không thể tạo bản sao lưu",
         );
       }
 
-      setShowCreateModal(false);
-      setSuccess(
-        result.message ||
-          "Tạo bản sao lưu thành công",
+      const blob =
+        await response.blob();
+
+      const headerFileName =
+        response.headers.get(
+          "x-backup-file",
+        );
+
+      const dispositionName =
+        getDownloadFileName(
+          response.headers.get(
+            "content-disposition",
+          ),
+        );
+
+      const fileName =
+        headerFileName ||
+        dispositionName ||
+        `lch-backup-${Date.now()}.json`;
+
+      const url =
+        URL.createObjectURL(
+          blob,
+        );
+
+      const anchor =
+        document.createElement(
+          "a",
+        );
+
+      anchor.href =
+        url;
+
+      anchor.download =
+        fileName;
+
+      document.body.appendChild(
+        anchor,
       );
 
-      setBackupPage(1);
-      await loadBackups();
-    } catch (createError) {
-      setError(
-        createError instanceof Error
-          ? createError.message
+      anchor.click();
+
+      anchor.remove();
+
+      URL.revokeObjectURL(
+        url,
+      );
+
+      showMessage(
+        "success",
+        `Đã tạo bản sao lưu "${fileName}" thành công.`,
+      );
+
+      await loadBackupInfo();
+    } catch (
+      error
+    ) {
+      showMessage(
+        "error",
+
+        error instanceof
+          Error
+          ? error.message
           : "Không thể tạo bản sao lưu",
       );
     } finally {
-      setCreating(false);
+      setBackupLoading(
+        false,
+      );
     }
-  };
+  }
 
-  const downloadBackup = async (
-    item: SaoLuuItem,
-  ) => {
-    try {
-      setDownloadingId(item._id);
-      setError("");
+  /* =======================================================
+     FILE SELECT
+  ======================================================= */
 
-      const response = await fetch(
-        `/api/sao-luu/${item._id}/tai-xuong`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        },
+  function resetRestore() {
+    setSelectedFile(
+      null,
+    );
+
+    setPreview(
+      null,
+    );
+
+    setConfirmText(
+      "",
+    );
+
+    setShowRestoreConfirm(
+      false,
+    );
+
+    if (
+      fileInputRef.current
+    ) {
+      fileInputRef.current.value =
+        "";
+    }
+  }
+
+  function handleFileChange(
+    event:
+      ChangeEvent<HTMLInputElement>,
+  ) {
+    const file =
+      event.target.files?.[0] ??
+      null;
+
+    setMessage(
+      null,
+    );
+
+    setPreview(
+      null,
+    );
+
+    setConfirmText(
+      "",
+    );
+
+    if (!file) {
+      setSelectedFile(
+        null,
       );
 
-      if (!response.ok) {
-        const contentType =
-          response.headers.get(
-            "content-type",
-          ) ?? "";
+      return;
+    }
 
-        if (
-          contentType.includes("application/json")
-        ) {
-          const result =
-            await readJson<{
-              message?: string;
-            }>(response);
+    if (
+      !file.name
+        .toLowerCase()
+        .endsWith(
+          ".json",
+        )
+    ) {
+      showMessage(
+        "error",
+        "Chỉ chấp nhận file sao lưu định dạng .json",
+      );
 
-          throw new Error(
-            result.message ||
-              "Không thể tải bản sao lưu",
-          );
-        }
+      event.target.value =
+        "";
 
-        throw new Error(
-          "Không thể tải bản sao lưu",
+      return;
+    }
+
+    if (
+      file.size >
+      100 *
+        1024 *
+        1024
+    ) {
+      showMessage(
+        "error",
+        "File sao lưu vượt quá giới hạn 100 MB",
+      );
+
+      event.target.value =
+        "";
+
+      return;
+    }
+
+    setSelectedFile(
+      file,
+    );
+  }
+
+  /* =======================================================
+     PREVIEW RESTORE
+  ======================================================= */
+
+  async function handlePreview() {
+    if (
+      !selectedFile
+    ) {
+      showMessage(
+        "error",
+        "Vui lòng chọn file sao lưu trước.",
+      );
+
+      return;
+    }
+
+    try {
+      setPreviewLoading(
+        true,
+      );
+
+      setMessage(
+        null,
+      );
+
+      setPreview(
+        null,
+      );
+
+      setConfirmText(
+        "",
+      );
+
+      const formData =
+        new FormData();
+
+      formData.append(
+        "file",
+        selectedFile,
+      );
+
+      const response =
+        await fetch(
+          "/api/sao-luu/phuc-hoi",
+          {
+            method:
+              "POST",
+
+            credentials:
+              "include",
+
+            body:
+              formData,
+          },
         );
+
+      const result =
+        await parseJson(
+          response,
+        );
+
+      if (
+        response.status ===
+          401
+      ) {
+        router.replace(
+          "/login",
+        );
+
+        return;
       }
 
-      const blob = await response.blob();
-      const objectUrl =
-        window.URL.createObjectURL(blob);
+      if (
+        response.status ===
+          403
+      ) {
+        router.replace(
+          "/dashboard",
+        );
 
-      const link = document.createElement("a");
-
-      link.href = objectUrl;
-      link.download =
-        item.tenTep ||
-        `${item.maSaoLuu}.json`;
-
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      window.setTimeout(() => {
-        window.URL.revokeObjectURL(objectUrl);
-      }, 1000);
-    } catch (downloadError) {
-      setError(
-        downloadError instanceof Error
-          ? downloadError.message
-          : "Không thể tải bản sao lưu",
-      );
-    } finally {
-      setDownloadingId("");
-    }
-  };
-
-  const handleDeleteBackup = async () => {
-    if (!deleteBackup) return;
-
-    try {
-      setDeleting(true);
-      setError("");
-
-      const response = await fetch(
-        `/api/sao-luu/${deleteBackup._id}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        },
-      );
-
-      const result = await readJson<{
-        success?: boolean;
-        message?: string;
-      }>(response);
+        return;
+      }
 
       if (
         !response.ok ||
-        result.success === false
+        !result.success ||
+        !result.data
       ) {
         throw new Error(
           result.message ||
-            "Không thể xóa bản sao lưu",
+            "Không thể kiểm tra file sao lưu",
         );
       }
 
-      setDeleteBackup(null);
-      setSuccess(
-        result.message ||
-          "Xóa bản sao lưu thành công",
+      setPreview(
+        result.data as RestorePreview,
       );
 
-      if (
-        backupList.length === 1 &&
-        backupPage > 1
-      ) {
-        setBackupPage((current) => current - 1);
-      } else {
-        await loadBackups();
-      }
-    } catch (deleteError) {
-      setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Không thể xóa bản sao lưu",
+      showMessage(
+        "success",
+        "File sao lưu hợp lệ. Hãy kiểm tra thông tin trước khi phục hồi.",
+      );
+    } catch (
+      error
+    ) {
+      showMessage(
+        "error",
+
+        error instanceof
+          Error
+          ? error.message
+          : "Không thể kiểm tra file sao lưu",
       );
     } finally {
-      setDeleting(false);
+      setPreviewLoading(
+        false,
+      );
     }
-  };
-
-  const sortedLogModules = useMemo(
-    () => [...logModules].sort(),
-    [logModules],
-  );
+  }
 
   /* =======================================================
-   * RENDER
-   * ===================================================== */
+     RESTORE
+  ======================================================= */
+
+  function requestRestore() {
+    if (
+      !selectedFile ||
+      !preview
+    ) {
+      showMessage(
+        "error",
+        "Bạn phải kiểm tra file sao lưu trước khi phục hồi.",
+      );
+
+      return;
+    }
+
+    if (
+      confirmText !==
+      preview.confirmText
+    ) {
+      showMessage(
+        "error",
+        `Vui lòng nhập chính xác "${preview.confirmText}" để xác nhận.`,
+      );
+
+      return;
+    }
+
+    setShowRestoreConfirm(
+      true,
+    );
+  }
+
+  async function handleRestore() {
+    if (
+      !selectedFile ||
+      !preview
+    ) {
+      return;
+    }
+
+    try {
+      setRestoreLoading(
+        true,
+      );
+
+      setMessage(
+        null,
+      );
+
+      const formData =
+        new FormData();
+
+      formData.append(
+        "file",
+        selectedFile,
+      );
+
+      formData.append(
+        "confirm",
+        confirmText,
+      );
+
+      const response =
+        await fetch(
+          "/api/sao-luu/phuc-hoi",
+          {
+            method:
+              "PUT",
+
+            credentials:
+              "include",
+
+            body:
+              formData,
+          },
+        );
+
+      const result =
+        await parseJson(
+          response,
+        );
+
+      if (
+        response.status ===
+          401
+      ) {
+        router.replace(
+          "/login",
+        );
+
+        return;
+      }
+
+      if (
+        response.status ===
+          403
+      ) {
+        router.replace(
+          "/dashboard",
+        );
+
+        return;
+      }
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Không thể phục hồi dữ liệu",
+        );
+      }
+
+      setShowRestoreConfirm(
+        false,
+      );
+
+      resetRestore();
+
+      showMessage(
+        "success",
+        result.message ||
+          "Phục hồi dữ liệu thành công.",
+      );
+
+      /*
+       * Sau restore, tài khoản/session có thể
+       * đã bị thay đổi nếu collection users
+       * nằm trong file backup.
+       *
+       * Kiểm tra lại quyền hiện tại.
+       */
+      const user =
+        await loadCurrentUser();
+
+      if (!user) {
+        return;
+      }
+
+      await loadBackupInfo(
+        true,
+      );
+    } catch (
+      error
+    ) {
+      setShowRestoreConfirm(
+        false,
+      );
+
+      showMessage(
+        "error",
+
+        error instanceof
+          Error
+          ? error.message
+          : "Không thể phục hồi dữ liệu",
+      );
+    } finally {
+      setRestoreLoading(
+        false,
+      );
+    }
+  }
+
+  /* =======================================================
+     LOADING
+  ======================================================= */
+
+  if (
+    loading
+  ) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <Loader2
+          size={36}
+          className="animate-spin text-[#123b68]"
+        />
+      </div>
+    );
+  }
+
+  /* =======================================================
+     UI
+  ======================================================= */
 
   return (
-    <div className="min-h-screen bg-[#f4f7fb]">
-      <div className="mx-auto w-full max-w-[1650px] px-4 py-7 sm:px-6 lg:px-8">
-        {/* HEADER */}
-        <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+    <main className="min-h-full bg-[#f4f7fb] px-3 py-5 sm:px-5 lg:px-8 lg:py-8">
+      <div className="mx-auto max-w-[1600px]">
+        {/* =================================================
+            HEADER
+        ================================================= */}
+
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#123d68]">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#123b68]">
               Quản trị hệ thống
             </p>
 
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
-              Sao lưu và bảo mật
+            <h1 className="mt-2 text-2xl font-bold text-slate-950 sm:text-3xl">
+              Sao lưu và phục hồi dữ liệu
             </h1>
 
-            <p className="mt-2 text-sm text-slate-600">
-              Quản lý bản sao lưu và theo dõi nhật ký
-              truy cập hệ thống.
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Tạo bản sao lưu toàn bộ dữ liệu hệ thống và phục hồi khi cần thiết.
+              Chức năng chỉ dành cho Quản trị viên.
             </p>
+
+            {currentUser && (
+              <p className="mt-1 text-xs text-slate-400">
+                Đang thao tác với tài khoản{" "}
+                <strong>
+                  {currentUser.fullName ||
+                    currentUser.username}
+                </strong>
+              </p>
+            )}
           </div>
 
-          {activeTab === "SAO_LUU" && (
+          <button
+            type="button"
+            disabled={
+              refreshing
+            }
+            onClick={() =>
+              void loadBackupInfo(
+                true,
+              )
+            }
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw
+              size={17}
+              className={
+                refreshing
+                  ? "animate-spin"
+                  : ""
+              }
+            />
+
+            Làm mới
+          </button>
+        </div>
+
+        {/* =================================================
+            MESSAGE
+        ================================================= */}
+
+        {message && (
+          <div
+            className={`mb-5 flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+              message.type ===
+              "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-red-200 bg-red-50 text-red-700"
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              {message.type ===
+              "success" ? (
+                <CheckCircle2
+                  size={18}
+                  className="mt-0.5 shrink-0"
+                />
+              ) : (
+                <AlertCircle
+                  size={18}
+                  className="mt-0.5 shrink-0"
+                />
+              )}
+
+              <span>
+                {message.text}
+              </span>
+            </div>
+
             <button
               type="button"
               onClick={() =>
-                setShowCreateModal(true)
+                setMessage(
+                  null,
+                )
               }
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-900 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-950"
+              className="shrink-0"
             >
-              <Plus size={18} />
-              Tạo bản sao lưu
-            </button>
-          )}
-        </div>
-
-        {/* MESSAGES */}
-        {error && (
-          <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <div className="flex gap-3">
-              <XCircle
-                size={19}
-                className="mt-0.5 shrink-0"
+              <X
+                size={17}
               />
-              <span>{error}</span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setError("")}
-            >
-              <X size={17} />
             </button>
           </div>
         )}
-
-        {success && (
-          <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            <div className="flex gap-3">
-              <CheckCircle2
-                size={19}
-                className="mt-0.5 shrink-0"
-              />
-              <span>{success}</span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setSuccess("")}
-            >
-              <X size={17} />
-            </button>
-          </div>
-        )}
-
-        {/* TABS */}
-        <div className="mb-6 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("SAO_LUU");
-              setError("");
-            }}
-            className={`inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition ${
-              activeTab === "SAO_LUU"
-                ? "bg-blue-900 text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <Database size={17} />
-            Sao lưu dữ liệu
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("NHAT_KY");
-              setError("");
-            }}
-            className={`inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition ${
-              activeTab === "NHAT_KY"
-                ? "bg-blue-900 text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <History size={17} />
-            Nhật ký bảo mật
-          </button>
-        </div>
 
         {/* =================================================
-         * BACKUP TAB
-         * =============================================== */}
+            SUMMARY
+        ================================================= */}
 
-        {activeTab === "SAO_LUU" && (
-          <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                title="Tổng bản sao lưu"
-                value={formatNumber(
-                  backupStatistic.tongSaoLuu,
-                )}
-                description="Tổng số lần sao lưu dữ liệu"
-                icon={<Archive size={23} />}
-                iconClassName="bg-blue-50 text-blue-700"
+        <section className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Cơ sở dữ liệu"
+            value={
+              backupInfo?.database ||
+              "—"
+            }
+            icon={
+              <Database
+                size={21}
               />
+            }
+          />
 
-              <StatCard
-                title="Sao lưu thành công"
-                value={formatNumber(
-                  backupStatistic.hoanThanh,
-                )}
-                description="Các bản sao lưu hoàn chỉnh"
-                icon={<ShieldCheck size={23} />}
-                iconClassName="bg-emerald-50 text-emerald-700"
+          <StatCard
+            label="Tổng collection"
+            value={formatNumber(
+              backupInfo?.totalCollections ??
+                0,
+            )}
+            icon={
+              <Server
+                size={21}
               />
+            }
+          />
 
-              <StatCard
-                title="Tổng dung lượng"
-                value={formatBytes(
-                  backupStatistic.tongDungLuong,
-                )}
-                description={`${formatNumber(
-                  backupStatistic.tongBanGhiDaSaoLuu,
-                )} bản ghi đã sao lưu`}
-                icon={<HardDrive size={23} />}
-                iconClassName="bg-violet-50 text-violet-700"
+          <StatCard
+            label="Tổng bản ghi"
+            value={formatNumber(
+              backupInfo?.totalDocuments ??
+                0,
+            )}
+            icon={
+              <HardDrive
+                size={21}
               />
+            }
+          />
 
-              <StatCard
-                title="Sao lưu thất bại"
-                value={formatNumber(
-                  backupStatistic.thatBai,
-                )}
-                description={`${formatNumber(
-                  backupStatistic.dangXuLy,
-                )} tiến trình đang xử lý`}
-                icon={<ShieldAlert size={23} />}
-                iconClassName="bg-red-50 text-red-700"
+          <StatCard
+            label="Trạng thái"
+            value={
+              backupInfo
+                ? "Sẵn sàng"
+                : "Chưa xác định"
+            }
+            icon={
+              <ShieldCheck
+                size={21}
               />
-            </div>
+            }
+          />
+        </section>
 
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="grid gap-3 lg:grid-cols-[1fr_220px_220px_auto]">
-                <div className="relative">
-                  <Search
-                    size={18}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
+        {/* =================================================
+            BACKUP + RESTORE
+        ================================================= */}
 
-                  <input
-                    value={backupSearch}
-                    onChange={(event) =>
-                      setBackupSearch(
-                        event.target.value,
-                      )
-                    }
-                    placeholder="Tìm mã, tên file hoặc người tạo"
-                    className="h-11 w-full rounded-xl border border-slate-300 pl-11 pr-4 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+        <section className="grid gap-5 xl:grid-cols-2">
+          {/* ===============================================
+              BACKUP
+          =============================================== */}
+
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#123b68]">
+                  <DatabaseBackup
+                    size={23}
                   />
                 </div>
 
-                <select
-                  value={backupStatus}
-                  onChange={(event) =>
-                    setBackupStatus(
-                      event.target.value,
-                    )
-                  }
-                  className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
-                >
-                  <option value="">
-                    Tất cả trạng thái
-                  </option>
-                  <option value="DANG_XU_LY">
-                    Đang xử lý
-                  </option>
-                  <option value="HOAN_THANH">
-                    Hoàn thành
-                  </option>
-                  <option value="THAT_BAI">
-                    Thất bại
-                  </option>
-                </select>
+                <div>
+                  <h2 className="font-bold text-slate-950">
+                    Tạo bản sao lưu
+                  </h2>
 
-                <select
-                  value={backupType}
-                  onChange={(event) =>
-                    setBackupType(
-                      event.target.value,
-                    )
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Xuất toàn bộ collection hiện có thành một file JSON có thể sử
+                    dụng để phục hồi sau này.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5">
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+                <div className="flex items-start gap-3">
+                  <FileJson
+                    size={20}
+                    className="mt-0.5 shrink-0 text-blue-700"
+                  />
+
+                  <div className="text-sm leading-6 text-blue-900">
+                    <p className="font-semibold">
+                      File backup bảo toàn kiểu dữ liệu MongoDB
+                    </p>
+
+                    <p className="mt-1 text-blue-700">
+                      ObjectId, Date và các kiểu BSON được giữ nguyên bằng Extended
+                      JSON để phục vụ quá trình khôi phục.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <SmallInfo
+                  label="Collection"
+                  value={formatNumber(
+                    backupInfo?.totalCollections ??
+                      0,
+                  )}
+                />
+
+                <SmallInfo
+                  label="Bản ghi"
+                  value={formatNumber(
+                    backupInfo?.totalDocuments ??
+                      0,
+                  )}
+                />
+              </div>
+
+              <button
+                type="button"
+                disabled={
+                  backupLoading ||
+                  !backupInfo
+                }
+                onClick={() =>
+                  void handleCreateBackup()
+                }
+                className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#123b68] px-5 text-sm font-semibold text-white transition hover:bg-[#0e3158] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {backupLoading ? (
+                  <Loader2
+                    size={18}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Download
+                    size={18}
+                  />
+                )}
+
+                {backupLoading
+                  ? "Đang tạo bản sao lưu..."
+                  : "Tạo và tải bản sao lưu"}
+              </button>
+
+              <p className="mt-3 text-center text-xs leading-5 text-slate-400">
+                Sau khi tạo thành công, thao tác sẽ được ghi vào Nhật ký hệ thống.
+              </p>
+            </div>
+          </div>
+
+          {/* ===============================================
+              RESTORE
+          =============================================== */}
+
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+                  <RotateCcw
+                    size={23}
+                  />
+                </div>
+
+                <div>
+                  <h2 className="font-bold text-slate-950">
+                    Phục hồi dữ liệu
+                  </h2>
+
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Chọn file backup, kiểm tra nội dung trước và chỉ phục hồi sau khi
+                    xác nhận.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5">
+              <input
+                ref={
+                  fileInputRef
+                }
+                type="file"
+                accept=".json,application/json"
+                onChange={
+                  handleFileChange
+                }
+                className="hidden"
+              />
+
+              <button
+                type="button"
+                onClick={() =>
+                  fileInputRef.current?.click()
+                }
+                className="flex min-h-[150px] w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 text-center transition hover:border-[#123b68] hover:bg-blue-50/30"
+              >
+                <Upload
+                  size={30}
+                  className="text-[#123b68]"
+                />
+
+                <p className="mt-3 text-sm font-semibold text-slate-800">
+                  Chọn file sao lưu JSON
+                </p>
+
+                <p className="mt-1 text-xs text-slate-400">
+                  Tối đa 100 MB
+                </p>
+              </button>
+
+              {selectedFile && (
+                <div className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <FileCheck2
+                      size={21}
+                      className="mt-0.5 shrink-0 text-emerald-600"
+                    />
+
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-800">
+                        {selectedFile.name}
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatFileSize(
+                          selectedFile.size,
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      resetRestore
+                    }
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-red-600"
+                  >
+                    <X
+                      size={17}
+                    />
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={
+                  !selectedFile ||
+                  previewLoading
+                }
+                onClick={() =>
+                  void handlePreview()
+                }
+                className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#123b68] bg-white px-4 text-sm font-semibold text-[#123b68] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {previewLoading ? (
+                  <Loader2
+                    size={17}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <FileCheck2
+                    size={17}
+                  />
+                )}
+
+                {previewLoading
+                  ? "Đang kiểm tra..."
+                  : "Kiểm tra file trước khi phục hồi"}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* =================================================
+            CURRENT COLLECTIONS
+        ================================================= */}
+
+        {backupInfo && (
+          <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 className="font-bold text-slate-950">
+                Dữ liệu hiện tại
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                {formatNumber(
+                  backupInfo.totalCollections,
+                )}{" "}
+                collection với{" "}
+                {formatNumber(
+                  backupInfo.totalDocuments,
+                )}{" "}
+                bản ghi.
+              </p>
+            </div>
+
+            <div className="max-h-[420px] overflow-auto">
+              <table className="w-full min-w-[650px] text-sm">
+                <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3">
+                      STT
+                    </th>
+
+                    <th className="px-5 py-3">
+                      Collection
+                    </th>
+
+                    <th className="px-5 py-3 text-right">
+                      Số bản ghi
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {backupInfo.collections.map(
+                    (
+                      item,
+                      index,
+                    ) => (
+                      <tr
+                        key={
+                          item.name
+                        }
+                        className="hover:bg-slate-50"
+                      >
+                        <td className="px-5 py-3 text-slate-400">
+                          {index +
+                            1}
+                        </td>
+
+                        <td className="px-5 py-3 font-mono text-sm font-medium text-slate-700">
+                          {item.name}
+                        </td>
+
+                        <td className="px-5 py-3 text-right font-semibold text-slate-900">
+                          {formatNumber(
+                            item.count,
+                          )}
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* =================================================
+            RESTORE PREVIEW
+        ================================================= */}
+
+        {preview && (
+          <section className="mt-5 overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+            <div className="border-b border-amber-200 bg-amber-50 px-5 py-4">
+              <div className="flex items-start gap-3">
+                <ShieldAlert
+                  size={22}
+                  className="mt-0.5 shrink-0 text-amber-700"
+                />
+
+                <div>
+                  <h2 className="font-bold text-amber-950">
+                    Xem trước dữ liệu phục hồi
+                  </h2>
+
+                  <p className="mt-1 text-sm leading-6 text-amber-800">
+                    {preview.warning}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <SmallInfo
+                  label="File"
+                  value={
+                    preview.fileName
                   }
-                  className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
+                />
+
+                <SmallInfo
+                  label="Phiên bản"
+                  value={`v${preview.version}`}
+                />
+
+                <SmallInfo
+                  label="Ngày tạo"
+                  value={formatDateTime(
+                    preview.createdAt,
+                  )}
+                />
+
+                <SmallInfo
+                  label="Database nguồn"
+                  value={
+                    preview.sourceDatabase ||
+                    "—"
+                  }
+                />
+
+                <SmallInfo
+                  label="Database đích"
+                  value={
+                    preview.targetDatabase ||
+                    "—"
+                  }
+                />
+
+                <SmallInfo
+                  label="Collection"
+                  value={formatNumber(
+                    preview.summary
+                      .totalCollections,
+                  )}
+                />
+
+                <SmallInfo
+                  label="Bản ghi trong backup"
+                  value={formatNumber(
+                    preview.summary
+                      .totalDocuments,
+                  )}
+                />
+
+                <SmallInfo
+                  label="Bản ghi hiện tại"
+                  value={formatNumber(
+                    preview.summary
+                      .currentTotalDocuments,
+                  )}
+                />
+              </div>
+
+              {preview.createdBy && (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  Bản sao lưu được tạo bởi{" "}
+                  <strong className="text-slate-800">
+                    {preview.createdBy
+                      .fullName ||
+                      preview.createdBy
+                        .username ||
+                      "Không xác định"}
+                  </strong>
+                  {preview.createdBy
+                    .username
+                    ? ` (@${preview.createdBy.username})`
+                    : ""}
+                  .
+                </div>
+              )}
+
+              <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+                <div className="max-h-[420px] overflow-auto">
+                  <table className="w-full min-w-[800px] text-sm">
+                    <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3">
+                          Collection
+                        </th>
+
+                        <th className="px-4 py-3 text-right">
+                          Hiện tại
+                        </th>
+
+                        <th className="px-4 py-3 text-right">
+                          Sau phục hồi
+                        </th>
+
+                        <th className="px-4 py-3 text-right">
+                          Thay đổi
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                      {preview.collections.map(
+                        (
+                          item,
+                        ) => {
+                          const difference =
+                            item.count -
+                            item.currentCount;
+
+                          return (
+                            <tr
+                              key={
+                                item.name
+                              }
+                              className="hover:bg-slate-50"
+                            >
+                              <td className="px-4 py-3 font-mono font-medium text-slate-700">
+                                {item.name}
+                              </td>
+
+                              <td className="px-4 py-3 text-right">
+                                {formatNumber(
+                                  item.currentCount,
+                                )}
+                              </td>
+
+                              <td className="px-4 py-3 text-right font-semibold">
+                                {formatNumber(
+                                  item.count,
+                                )}
+                              </td>
+
+                              <td
+                                className={`px-4 py-3 text-right font-semibold ${
+                                  difference >
+                                  0
+                                    ? "text-emerald-600"
+                                    : difference <
+                                        0
+                                      ? "text-red-600"
+                                      : "text-slate-400"
+                                }`}
+                              >
+                                {difference >
+                                0
+                                  ? "+"
+                                  : ""}
+                                {formatNumber(
+                                  difference,
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        },
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* ===========================================
+                  CONFIRM TEXT
+              =========================================== */}
+
+              <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
+                <div className="flex items-start gap-3">
+                  <ShieldAlert
+                    size={21}
+                    className="mt-0.5 shrink-0 text-red-600"
+                  />
+
+                  <div className="flex-1">
+                    <p className="font-semibold text-red-800">
+                      Xác nhận thao tác nguy hiểm
+                    </p>
+
+                    <p className="mt-1 text-sm leading-6 text-red-700">
+                      Dữ liệu hiện tại của các collection trong file sẽ bị thay thế.
+                      Nhập chính xác{" "}
+                      <strong>
+                        {preview.confirmText}
+                      </strong>{" "}
+                      để mở khóa nút phục hồi.
+                    </p>
+
+                    <input
+                      value={
+                        confirmText
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        setConfirmText(
+                          event.target.value,
+                        )
+                      }
+                      autoComplete="off"
+                      placeholder={preview.confirmText}
+                      className="mt-3 h-11 w-full max-w-md rounded-lg border border-red-300 bg-white px-3 font-mono text-sm font-semibold outline-none focus:border-red-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={
+                    restoreLoading
+                  }
+                  onClick={
+                    resetRestore
+                  }
+                  className="h-11 rounded-lg border border-slate-300 bg-white px-5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  <option value="">
-                    Tất cả loại
-                  </option>
-                  <option value="THU_CONG">
-                    Thủ công
-                  </option>
-                  <option value="TU_DONG">
-                    Tự động
-                  </option>
-                </select>
+                  Hủy phục hồi
+                </button>
 
                 <button
                   type="button"
-                  onClick={() => void loadBackups()}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  disabled={
+                    restoreLoading ||
+                    confirmText !==
+                      preview.confirmText
+                  }
+                  onClick={
+                    requestRestore
+                  }
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-red-600 px-5 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <RefreshCw size={17} />
-                  Làm mới
+                  <RotateCcw
+                    size={17}
+                  />
+
+                  Phục hồi dữ liệu
                 </button>
               </div>
             </div>
-
-            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 px-5 py-4">
-                <h2 className="font-bold text-slate-900">
-                  Lịch sử sao lưu
-                </h2>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Quản lý và tải xuống các bản sao lưu
-                  dữ liệu.
-                </p>
-              </div>
-
-              {backupLoading ? (
-                <div className="flex min-h-80 items-center justify-center">
-                  <LoaderCircle
-                    size={36}
-                    className="animate-spin text-blue-700"
-                  />
-                </div>
-              ) : backupList.length === 0 ? (
-                <div className="flex min-h-80 flex-col items-center justify-center text-center">
-                  <Archive
-                    size={44}
-                    className="text-slate-300"
-                  />
-
-                  <p className="mt-4 font-bold text-slate-700">
-                    Chưa có bản sao lưu
-                  </p>
-
-                  <p className="mt-1 text-sm text-slate-500">
-                    Nhấn “Tạo bản sao lưu” để bắt đầu.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1150px]">
-                      <thead>
-                        <tr className="bg-slate-50">
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Mã sao lưu
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            File
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Người tạo
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Thời gian
-                          </th>
-                          <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">
-                            Bản ghi
-                          </th>
-                          <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">
-                            Dung lượng
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Trạng thái
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-bold uppercase text-slate-500">
-                            Thao tác
-                          </th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {backupList.map(
-                          (item, index) => (
-                            <tr
-                              key={`${item._id}-${index}`}
-                              className="border-t border-slate-100 hover:bg-blue-50/30"
-                            >
-                              <td className="px-4 py-4">
-                                <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800">
-                                  {item.maSaoLuu}
-                                </span>
-                              </td>
-
-                              <td className="px-4 py-4">
-                                <p className="max-w-60 truncate text-sm font-semibold text-slate-900">
-                                  {item.tenTep}
-                                </p>
-
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {item.loaiSaoLuu ===
-                                  "TU_DONG"
-                                    ? "Tự động"
-                                    : "Thủ công"}
-                                </p>
-                              </td>
-
-                              <td className="px-4 py-4">
-                                <p className="text-sm font-semibold text-slate-800">
-                                  {item.hoTenNguoiTao ||
-                                    "Không xác định"}
-                                </p>
-
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {item.tenDangNhap || "—"}
-                                </p>
-                              </td>
-
-                              <td className="whitespace-nowrap px-4 py-4 text-xs text-slate-600">
-                                {formatDateTime(
-                                  item.createdAt,
-                                )}
-                              </td>
-
-                              <td className="px-4 py-4 text-right text-sm font-bold text-slate-800">
-                                {formatNumber(
-                                  item.tongSoBanGhi,
-                                )}
-                              </td>
-
-                              <td className="px-4 py-4 text-right text-sm font-medium text-slate-700">
-                                {formatBytes(
-                                  item.dungLuong,
-                                )}
-                              </td>
-
-                              <td className="px-4 py-4">
-                                <span
-                                  className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${getBackupStatusClass(
-                                    item.trangThai,
-                                  )}`}
-                                >
-                                  {getBackupStatusLabel(
-                                    item.trangThai,
-                                  )}
-                                </span>
-                              </td>
-
-                              <td className="px-4 py-4">
-                                <div className="flex justify-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setSelectedBackup(
-                                        item,
-                                      )
-                                    }
-                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50"
-                                    title="Xem chi tiết"
-                                  >
-                                    <Eye size={17} />
-                                  </button>
-
-                                  {item.trangThai ===
-                                    "HOAN_THANH" && (
-                                    <button
-                                      type="button"
-                                      disabled={
-                                        downloadingId ===
-                                        item._id
-                                      }
-                                      onClick={() =>
-                                        void downloadBackup(
-                                          item,
-                                        )
-                                      }
-                                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50"
-                                      title="Tải xuống"
-                                    >
-                                      {downloadingId ===
-                                      item._id ? (
-                                        <LoaderCircle
-                                          size={17}
-                                          className="animate-spin"
-                                        />
-                                      ) : (
-                                        <Download
-                                          size={17}
-                                        />
-                                      )}
-                                    </button>
-                                  )}
-
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      item.trangThai ===
-                                      "DANG_XU_LY"
-                                    }
-                                    onClick={() =>
-                                      setDeleteBackup(
-                                        item,
-                                      )
-                                    }
-                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                    title="Xóa"
-                                  >
-                                    <Trash2 size={17} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ),
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
-                    <p className="text-sm text-slate-500">
-                      Tổng cộng{" "}
-                      {formatNumber(
-                        backupPagination.tongBanGhi,
-                      )}{" "}
-                      bản sao lưu
-                    </p>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        disabled={
-                          !backupPagination.coTrangTruoc
-                        }
-                        onClick={() =>
-                          setBackupPage((page) =>
-                            Math.max(1, page - 1),
-                          )
-                        }
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 disabled:opacity-40"
-                      >
-                        <ChevronLeft size={18} />
-                      </button>
-
-                      <span className="text-sm font-semibold text-slate-700">
-                        {backupPagination.trangHienTai}/
-                        {backupPagination.tongTrang}
-                      </span>
-
-                      <button
-                        disabled={
-                          !backupPagination.coTrangSau
-                        }
-                        onClick={() =>
-                          setBackupPage((page) =>
-                            Math.min(
-                              backupPagination.tongTrang,
-                              page + 1,
-                            ),
-                          )
-                        }
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 disabled:opacity-40"
-                      >
-                        <ChevronRight size={18} />
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </>
+          </section>
         )}
-
-        {/* =================================================
-         * LOG TAB
-         * =============================================== */}
-
-        {activeTab === "NHAT_KY" && (
-          <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                title="Tổng nhật ký"
-                value={formatNumber(
-                  logStatistic.tongBanGhi,
-                )}
-                description={`${formatNumber(
-                  logStatistic.trongNgay,
-                )} hoạt động hôm nay`}
-                icon={<FileClock size={23} />}
-                iconClassName="bg-blue-50 text-blue-700"
-              />
-
-              <StatCard
-                title="Thành công"
-                value={formatNumber(
-                  logStatistic.thanhCong,
-                )}
-                description="Thao tác hoàn tất thành công"
-                icon={<ShieldCheck size={23} />}
-                iconClassName="bg-emerald-50 text-emerald-700"
-              />
-
-              <StatCard
-                title="Thất bại"
-                value={formatNumber(
-                  logStatistic.thatBai,
-                )}
-                description="Các thao tác xảy ra lỗi"
-                icon={<XCircle size={23} />}
-                iconClassName="bg-red-50 text-red-700"
-              />
-
-              <StatCard
-                title="Cảnh báo"
-                value={formatNumber(
-                  logStatistic.canhBao +
-                    logStatistic.nguyHiem,
-                )}
-                description={`${formatNumber(
-                  logStatistic.nguyHiem,
-                )} sự kiện nguy hiểm`}
-                icon={<ShieldAlert size={23} />}
-                iconClassName="bg-amber-50 text-amber-700"
-              />
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="grid gap-3 lg:grid-cols-[1fr_190px_210px_170px_170px_auto]">
-                <div className="relative">
-                  <Search
-                    size={18}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-
-                  <input
-                    value={logSearch}
-                    onChange={(event) =>
-                      setLogSearch(event.target.value)
-                    }
-                    placeholder="Tìm người dùng, nội dung hoặc IP"
-                    className="h-11 w-full rounded-xl border border-slate-300 pl-11 pr-4 text-sm outline-none"
-                  />
-                </div>
-
-                <select
-                  value={logModule}
-                  onChange={(event) =>
-                    setLogModule(event.target.value)
-                  }
-                  className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm"
-                >
-                  <option value="">
-                    Tất cả module
-                  </option>
-
-                  {sortedLogModules.map(
-                    (module, index) => (
-                      <option
-                        key={`${module}-${index}`}
-                        value={module}
-                      >
-                        {getModuleLabel(module)}
-                      </option>
-                    ),
-                  )}
-                </select>
-
-                <select
-                  value={logAction}
-                  onChange={(event) =>
-                    setLogAction(event.target.value)
-                  }
-                  className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm"
-                >
-                  <option value="">
-                    Tất cả hành động
-                  </option>
-
-                  {logActions.map(
-                    (action, index) => (
-                      <option
-                        key={`${action}-${index}`}
-                        value={action}
-                      >
-                        {getActionLabel(action)}
-                      </option>
-                    ),
-                  )}
-                </select>
-
-                <select
-                  value={logLevel}
-                  onChange={(event) =>
-                    setLogLevel(event.target.value)
-                  }
-                  className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm"
-                >
-                  <option value="">
-                    Tất cả mức độ
-                  </option>
-                  <option value="THONG_TIN">
-                    Thông tin
-                  </option>
-                  <option value="CANH_BAO">
-                    Cảnh báo
-                  </option>
-                  <option value="NGUY_HIEM">
-                    Nguy hiểm
-                  </option>
-                </select>
-
-                <select
-                  value={logResult}
-                  onChange={(event) =>
-                    setLogResult(event.target.value)
-                  }
-                  className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm"
-                >
-                  <option value="">
-                    Tất cả kết quả
-                  </option>
-                  <option value="THANH_CONG">
-                    Thành công
-                  </option>
-                  <option value="THAT_BAI">
-                    Thất bại
-                  </option>
-                </select>
-
-                <button
-                  onClick={() => void loadLogs()}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-semibold hover:bg-slate-50"
-                >
-                  <RefreshCw size={17} />
-                  Làm mới
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 px-5 py-4">
-                <h2 className="font-bold text-slate-900">
-                  Nhật ký hoạt động
-                </h2>
-              </div>
-
-              {logLoading ? (
-                <div className="flex min-h-80 items-center justify-center">
-                  <LoaderCircle
-                    size={36}
-                    className="animate-spin text-blue-700"
-                  />
-                </div>
-              ) : logList.length === 0 ? (
-                <div className="flex min-h-80 flex-col items-center justify-center">
-                  <History
-                    size={44}
-                    className="text-slate-300"
-                  />
-
-                  <p className="mt-4 font-bold text-slate-700">
-                    Chưa có nhật ký
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1250px]">
-                      <thead>
-                        <tr className="bg-slate-50">
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Thời gian
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Người dùng
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Hành động
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Module
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Nội dung
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Mức độ
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">
-                            Kết quả
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-bold uppercase text-slate-500">
-                            Chi tiết
-                          </th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {logList.map((item, index) => (
-                          <tr
-                            key={`${item._id}-${index}`}
-                            className="border-t border-slate-100 hover:bg-blue-50/30"
-                          >
-                            <td className="whitespace-nowrap px-4 py-4 text-xs text-slate-600">
-                              {formatDateTime(
-                                item.createdAt,
-                              )}
-                            </td>
-
-                            <td className="px-4 py-4">
-                              <div className="flex items-center gap-2">
-                                <User
-                                  size={17}
-                                  className="text-slate-400"
-                                />
-
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-800">
-                                    {item.hoTen ||
-                                      item.tenDangNhap ||
-                                      "Hệ thống"}
-                                  </p>
-
-                                  <p className="text-xs text-slate-500">
-                                    {getRoleLabel(
-                                      item.vaiTro,
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="px-4 py-4">
-                              <span
-                                className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${getActionClass(
-                                  item.hanhDong,
-                                )}`}
-                              >
-                                {getActionLabel(
-                                  item.hanhDong,
-                                )}
-                              </span>
-                            </td>
-
-                            <td className="px-4 py-4 text-sm font-medium text-slate-700">
-                              {getModuleLabel(
-                                item.module,
-                              )}
-                            </td>
-
-                            <td className="px-4 py-4">
-                              <p className="line-clamp-2 max-w-80 text-sm text-slate-700">
-                                {item.moTa}
-                              </p>
-                            </td>
-
-                            <td className="px-4 py-4">
-                              <span
-                                className={`rounded-full border px-2.5 py-1 text-xs font-bold ${getLevelClass(
-                                  item.mucDo,
-                                )}`}
-                              >
-                                {getLevelLabel(
-                                  item.mucDo,
-                                )}
-                              </span>
-                            </td>
-
-                            <td className="px-4 py-4">
-                              <span
-                                className={`text-sm font-bold ${
-                                  item.ketQua ===
-                                  "THANH_CONG"
-                                    ? "text-emerald-700"
-                                    : "text-red-700"
-                                }`}
-                              >
-                                {item.ketQua ===
-                                "THANH_CONG"
-                                  ? "Thành công"
-                                  : "Thất bại"}
-                              </span>
-                            </td>
-
-                            <td className="px-4 py-4 text-center">
-                              <button
-                                onClick={() =>
-                                  setSelectedLog(item)
-                                }
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50"
-                              >
-                                <Eye size={17} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
-                    <p className="text-sm text-slate-500">
-                      Tổng cộng{" "}
-                      {formatNumber(
-                        logPagination.tongBanGhi,
-                      )}{" "}
-                      nhật ký
-                    </p>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        disabled={
-                          !logPagination.coTrangTruoc
-                        }
-                        onClick={() =>
-                          setLogPage((page) =>
-                            Math.max(1, page - 1),
-                          )
-                        }
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 disabled:opacity-40"
-                      >
-                        <ChevronLeft size={18} />
-                      </button>
-
-                      <span className="text-sm font-semibold text-slate-700">
-                        {logPagination.trangHienTai}/
-                        {logPagination.tongTrang}
-                      </span>
-
-                      <button
-                        disabled={
-                          !logPagination.coTrangSau
-                        }
-                        onClick={() =>
-                          setLogPage((page) =>
-                            Math.min(
-                              logPagination.tongTrang,
-                              page + 1,
-                            ),
-                          )
-                        }
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 disabled:opacity-40"
-                      >
-                        <ChevronRight size={18} />
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </>
-        )}
-
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-          <LockKeyhole
-            size={19}
-            className="mt-0.5 shrink-0"
-          />
-
-          <p>
-            Chỉ tài khoản Quản trị viên được quyền tạo,
-            tải xuống, xóa bản sao lưu và xem nhật ký bảo
-            mật.
-          </p>
-        </div>
       </div>
 
-      {showCreateModal && (
-        <CreateBackupModal
-          creating={creating}
-          onClose={() =>
-            !creating && setShowCreateModal(false)
-          }
-          onSubmit={createBackup}
-        />
-      )}
+      {/* ===================================================
+          FINAL CONFIRM MODAL
+      =================================================== */}
 
-      {selectedBackup && (
-        <BackupDetailModal
-          item={selectedBackup}
-          downloading={
-            downloadingId === selectedBackup._id
-          }
-          onClose={() => setSelectedBackup(null)}
-          onDownload={downloadBackup}
-        />
-      )}
+      {showRestoreConfirm &&
+        preview && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3">
+            <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="p-5 sm:p-6">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
+                  <ShieldAlert
+                    size={26}
+                  />
+                </div>
 
-      {deleteBackup && (
-        <DeleteBackupModal
-          item={deleteBackup}
-          deleting={deleting}
-          onClose={() =>
-            !deleting && setDeleteBackup(null)
-          }
-          onDelete={handleDeleteBackup}
-        />
-      )}
+                <h2 className="mt-4 text-xl font-bold text-slate-950">
+                  Xác nhận phục hồi dữ liệu
+                </h2>
 
-      {selectedLog && (
-        <LogDetailModal
-          item={selectedLog}
-          onClose={() => setSelectedLog(null)}
-        />
-      )}
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Bạn đang chuẩn bị thay thế dữ liệu của{" "}
+                  <strong>
+                    {formatNumber(
+                      preview.summary
+                        .totalCollections,
+                    )}{" "}
+                    collection
+                  </strong>{" "}
+                  bằng{" "}
+                  <strong>
+                    {formatNumber(
+                      preview.summary
+                        .totalDocuments,
+                    )}{" "}
+                    bản ghi
+                  </strong>{" "}
+                  từ file{" "}
+                  <strong>
+                    {preview.fileName}
+                  </strong>
+                  .
+                </p>
+
+                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">
+                  Không đóng trình duyệt hoặc tắt server trong quá trình phục hồi.
+                  Nếu có lỗi, backend sẽ cố rollback các collection đã thay đổi.
+                </div>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={
+                    restoreLoading
+                  }
+                  onClick={() =>
+                    setShowRestoreConfirm(
+                      false,
+                    )
+                  }
+                  className="h-11 rounded-lg border border-slate-300 bg-white px-5 text-sm font-medium text-slate-700 disabled:opacity-50"
+                >
+                  Quay lại
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    restoreLoading
+                  }
+                  onClick={() =>
+                    void handleRestore()
+                  }
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-red-600 px-5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {restoreLoading ? (
+                    <Loader2
+                      size={17}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <RotateCcw
+                      size={17}
+                    />
+                  )}
+
+                  {restoreLoading
+                    ? "Đang phục hồi..."
+                    : "Xác nhận phục hồi"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+    </main>
+  );
+}
+
+/* =========================================================
+   COMPONENTS
+========================================================= */
+
+function StatCard({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+
+  value:
+    string | number;
+
+  icon: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-[105px] items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-slate-500">
+          {label}
+        </p>
+
+        <p className="mt-2 truncate text-xl font-bold text-slate-950">
+          {value}
+        </p>
+      </div>
+
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[#123b68]">
+        {icon}
+      </div>
+    </div>
+  );
+}
+
+function SmallInfo({
+  label,
+  value,
+}: {
+  label: string;
+
+  value:
+    string | number;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <p className="text-xs font-medium text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+        {value}
+      </p>
     </div>
   );
 }

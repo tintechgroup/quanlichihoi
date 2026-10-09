@@ -17,7 +17,7 @@ export interface IHoiVien {
   maHoiVien: string;
   hoTen: string;
 
-  ngaySinh?: Date;
+  ngaySinh?: Date | null;
   gioiTinh?: GioiTinh;
 
   email?: string;
@@ -36,7 +36,7 @@ export interface IHoiVien {
    * Tài khoản đăng nhập của Hội viên.
    * Chỉ có giá trị sau khi được cấp tài khoản.
    */
-  taiKhoanId?: Types.ObjectId;
+  taiKhoanId?: Types.ObjectId | null;
 
   trangThai: TrangThaiHoiVien;
 

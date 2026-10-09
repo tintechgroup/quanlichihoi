@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/van-kien/don-file-rac",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}

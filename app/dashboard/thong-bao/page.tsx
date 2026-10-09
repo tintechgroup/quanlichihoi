@@ -2,11 +2,14 @@
 
 import {
   AlertCircle,
+  Archive,
   Bell,
   Check,
   CheckCheck,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Eye,
   FileText,
   Loader2,
@@ -17,9 +20,11 @@ import {
   RefreshCw,
   Search,
   Send,
+
   Trash2,
   Upload,
   X,
+  XCircle,
 } from "lucide-react";
 
 import {
@@ -31,6 +36,10 @@ import {
   useRef,
   useState,
 } from "react";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type UserRole =
   | "ADMIN"
@@ -57,7 +66,9 @@ type PhamViThongBao =
 
 type TrangThaiThongBao =
   | "NHAP"
+  | "CHO_DUYET"
   | "DA_DANG"
+  | "TU_CHOI"
   | "DA_AN";
 
 interface TepDinhKem {
@@ -80,28 +91,50 @@ interface NguoiDungOption {
   role: UserRole;
 }
 
+interface NguoiDungRef {
+  id?: string;
+  username?: string;
+  fullName?: string;
+  role?: UserRole;
+}
+
 interface ThongBao {
   id: string;
   _id?: string;
+
+  maThongBao?: string;
+
   tieuDe: string;
   noiDung: string;
+
   loaiThongBao: LoaiThongBao;
   mucDo: MucDoThongBao;
   phamVi: PhamViThongBao;
+
   chiHoiIds: string[];
   vaiTroNguoiNhan: UserRole[];
   nguoiNhanIds: string[];
+
   tepDinhKem: TepDinhKem[];
+
   ngayBatDau?: string;
   ngayKetThuc?: string;
+
   trangThai: TrangThaiThongBao;
+
+  ngayGuiDuyet?: string | null;
+  ngayDuyet?: string | null;
+  lyDoTuChoi?: string;
+
   daDoc?: boolean;
   soLuotXem?: number;
-  nguoiTao?: {
-    id?: string;
-    fullName?: string;
-    username?: string;
-  };
+
+  nguoiTao?: NguoiDungRef;
+  nguoiDuyet?: NguoiDungRef;
+
+  nguoiTaoId?: string;
+  nguoiDuyetId?: string;
+
   createdAt: string;
   updatedAt?: string;
 }
@@ -109,78 +142,168 @@ interface ThongBao {
 interface ThongBaoFormData {
   tieuDe: string;
   noiDung: string;
+
   loaiThongBao: LoaiThongBao;
   mucDo: MucDoThongBao;
   phamVi: PhamViThongBao;
+
   chiHoiIds: string[];
   vaiTroNguoiNhan: UserRole[];
   nguoiNhanIds: string[];
+
   tepDinhKem: TepDinhKem[];
+
   ngayBatDau: string;
   ngayKetThuc: string;
+
   trangThai: TrangThaiThongBao;
 }
 
 interface ThongKe {
   tong: number;
   chuaDoc: number;
+
   quanTrong: number;
   khanCap: number;
+
+  choDuyet: number;
+  tuChoi: number;
+  banNhap: number;
+  daDang: number;
+  daAn: number;
 }
+
+interface QuyenThongBao {
+  role: UserRole;
+  canManage: boolean;
+  canApprove: boolean;
+  canPublishDirectly: boolean;
+}
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const VALID_STATUS: TrangThaiThongBao[] = [
+  "NHAP",
+  "CHO_DUYET",
+  "DA_DANG",
+  "TU_CHOI",
+  "DA_AN",
+];
 
 const EMPTY_FORM: ThongBaoFormData = {
   tieuDe: "",
   noiDung: "",
+
   loaiThongBao: "THONG_BAO_CHUNG",
+
   mucDo: "THONG_THUONG",
+
   phamVi: "TAT_CA",
+
   chiHoiIds: [],
   vaiTroNguoiNhan: [],
   nguoiNhanIds: [],
+
   tepDinhKem: [],
+
   ngayBatDau: "",
   ngayKetThuc: "",
+
   trangThai: "DA_DANG",
 };
 
-const ROLE_LABEL: Record<UserRole, string> = {
+const EMPTY_STATS: ThongKe = {
+  tong: 0,
+  chuaDoc: 0,
+
+  quanTrong: 0,
+  khanCap: 0,
+
+  choDuyet: 0,
+  tuChoi: 0,
+  banNhap: 0,
+  daDang: 0,
+  daAn: 0,
+};
+
+const ROLE_LABEL: Record<
+  UserRole,
+  string
+> = {
   ADMIN: "Quản trị viên",
   BAN_CHAP_HANH: "Ban Chấp hành",
   CHI_HOI_TRUONG: "Chi hội trưởng",
   HOI_VIEN: "Hội viên",
 };
 
-const LOAI_LABEL: Record<LoaiThongBao, string> = {
+const LOAI_LABEL: Record<
+  LoaiThongBao,
+  string
+> = {
   THONG_BAO_CHUNG: "Thông báo chung",
   HOAT_DONG: "Thông báo hoạt động",
   TAI_LIEU: "Tài liệu",
   KHAC: "Thông báo khác",
 };
 
+const TRANG_THAI_LABEL: Record<
+  TrangThaiThongBao,
+  string
+> = {
+  NHAP: "Bản nháp",
+  CHO_DUYET: "Chờ duyệt",
+  DA_DANG: "Đã đăng",
+  TU_CHOI: "Bị từ chối",
+  DA_AN: "Đã ẩn",
+};
+
 const MAX_FILES = 5;
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+const MAX_FILE_SIZE =
+  10 * 1024 * 1024;
 
 const ACCEPTED_FILE_TYPES =
   ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.jpg,.jpeg,.png,.webp";
 
-function getId(value: unknown): string {
-  if (!value) return "";
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function getId(
+  value: unknown,
+): string {
+  if (!value) {
+    return "";
+  }
 
   if (typeof value === "string") {
     return value;
   }
 
   if (typeof value === "object") {
-    const item = value as Record<string, unknown>;
+    const item =
+      value as Record<
+        string,
+        unknown
+      >;
 
-    return String(item.id ?? item._id ?? "");
+    return String(
+      item.id ??
+        item._id ??
+        "",
+    );
   }
 
   return String(value);
 }
 
-async function parseResponse(response: Response) {
-  const text = await response.text();
+async function parseResponse(
+  response: Response,
+) {
+  const text =
+    await response.text();
 
   if (!text.trim()) {
     return {};
@@ -195,493 +318,1202 @@ async function parseResponse(response: Response) {
   }
 }
 
-function toDateTimeLocal(value?: string) {
-  if (!value) return "";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
+function toDateTimeLocal(
+  value?: string,
+) {
+  if (!value) {
     return "";
   }
 
-  const localDate = new Date(
-    date.getTime() -
-      date.getTimezoneOffset() * 60_000,
-  );
+  const date =
+    new Date(value);
 
-  return localDate.toISOString().slice(0, 16);
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "";
+  }
+
+  const localDate =
+    new Date(
+      date.getTime() -
+        date.getTimezoneOffset() *
+          60_000,
+    );
+
+  return localDate
+    .toISOString()
+    .slice(0, 16);
 }
 
-function formatDate(value?: string) {
-  if (!value) return "—";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
+function formatDate(
+  value?: string | null,
+) {
+  if (!value) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat(
+    "vi-VN",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    },
+  ).format(date);
 }
 
-function formatFileSize(size?: number) {
-  if (!size || size <= 0) return "";
+function formatFileSize(
+  size?: number,
+) {
+  if (!size || size <= 0) {
+    return "";
+  }
 
   if (size < 1024) {
     return `${size} B`;
   }
 
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
+  if (
+    size <
+    1024 * 1024
+  ) {
+    return `${(
+      size / 1024
+    ).toFixed(1)} KB`;
   }
 
-  return `${(size / (1024 * 1024)).toFixed(
-    1,
-  )} MB`;
+  return `${(
+    size /
+    (1024 * 1024)
+  ).toFixed(1)} MB`;
 }
 
 function normalizeThongBao(
-  raw: Partial<ThongBao> & Pick<ThongBao, "tieuDe" | "noiDung">,
+  raw:
+    Partial<ThongBao> &
+    Pick<
+      ThongBao,
+      "tieuDe" | "noiDung"
+    >,
 ): ThongBao {
   return {
     ...raw,
-    id: getId(raw.id ?? raw._id),
 
-    chiHoiIds: (raw.chiHoiIds ?? []).map(
-      getId,
-    ),
+    id:
+      getId(
+        raw.id ??
+          raw._id,
+      ),
 
-    nguoiNhanIds: (
-      raw.nguoiNhanIds ?? []
-    ).map(getId),
+    chiHoiIds:
+      (
+        raw.chiHoiIds ??
+        []
+      ).map(getId),
+
+    nguoiNhanIds:
+      (
+        raw.nguoiNhanIds ??
+        []
+      ).map(getId),
 
     vaiTroNguoiNhan:
-      raw.vaiTroNguoiNhan ?? [],
+      raw.vaiTroNguoiNhan ??
+      [],
 
-    tepDinhKem: raw.tepDinhKem ?? [],
+    tepDinhKem:
+      raw.tepDinhKem ??
+      [],
 
     trangThai:
-      raw.trangThai ?? "DA_DANG",
+      raw.trangThai ??
+      "DA_DANG",
 
     mucDo:
-      raw.mucDo ?? "THONG_THUONG",
+      raw.mucDo ??
+      "THONG_THUONG",
 
     loaiThongBao:
       raw.loaiThongBao ??
       "THONG_BAO_CHUNG",
 
-    phamVi: raw.phamVi ?? "TAT_CA",
+    phamVi:
+      raw.phamVi ??
+      "TAT_CA",
 
     createdAt:
       raw.createdAt ??
-      new Date().toISOString(),
+      new Date()
+        .toISOString(),
+
+    tieuDe:
+      raw.tieuDe,
+
+    noiDung:
+      raw.noiDung,
   };
 }
 
-export default function ThongBaoPage() {
-  const [userRole, setUserRole] =
-    useState<UserRole>("HOI_VIEN");
+function getStatusBadgeClass(
+  status:
+    TrangThaiThongBao,
+) {
+  if (
+    status ===
+    "DA_DANG"
+  ) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
 
-  const [sessionLoaded, setSessionLoaded] =
+  if (
+    status ===
+    "CHO_DUYET"
+  ) {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  if (
+    status ===
+    "TU_CHOI"
+  ) {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (
+    status ===
+    "DA_AN"
+  ) {
+    return "border-slate-300 bg-slate-100 text-slate-600";
+  }
+
+  return "border-blue-200 bg-blue-50 text-blue-700";
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+export default function ThongBaoPage() {
+  const queryInitializedRef =
+    useRef(false);
+
+  const openedQueryIdRef =
+    useRef("");
+
+  const [
+    queryInitialized,
+    setQueryInitialized,
+  ] =
     useState(false);
 
-  const [thongBaoList, setThongBaoList] =
-    useState<ThongBao[]>([]);
+  const [
+    userRole,
+    setUserRole,
+  ] =
+    useState<UserRole>(
+      "HOI_VIEN",
+    );
 
-  const [chiHoiList, setChiHoiList] =
-    useState<ChiHoiOption[]>([]);
+  const [
+    sessionLoaded,
+    setSessionLoaded,
+  ] =
+    useState(false);
 
-  const [nguoiDungList, setNguoiDungList] =
-    useState<NguoiDungOption[]>([]);
+  const [
+    thongBaoList,
+    setThongBaoList,
+  ] =
+    useState<
+      ThongBao[]
+    >([]);
 
-  const [loading, setLoading] =
+  const [
+    chiHoiList,
+    setChiHoiList,
+  ] =
+    useState<
+      ChiHoiOption[]
+    >([]);
+
+  const [
+    nguoiDungList,
+    setNguoiDungList,
+  ] =
+    useState<
+      NguoiDungOption[]
+    >([]);
+
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const [saving, setSaving] =
+  const [
+    saving,
+    setSaving,
+  ] =
     useState(false);
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] =
+  const [
+    openingQuery,
+    setOpeningQuery,
+  ] =
+    useState(false);
+
+  const [
+    error,
+    setError,
+  ] =
     useState("");
 
-  const [keyword, setKeyword] =
+  const [
+    success,
+    setSuccess,
+  ] =
     useState("");
 
-  const [loaiFilter, setLoaiFilter] =
+  const [
+    keyword,
+    setKeyword,
+  ] =
     useState("");
 
-  const [mucDoFilter, setMucDoFilter] =
+  const [
+    loaiFilter,
+    setLoaiFilter,
+  ] =
+    useState("");
+
+  const [
+    mucDoFilter,
+    setMucDoFilter,
+  ] =
     useState("");
 
   const [
     trangThaiFilter,
     setTrangThaiFilter,
-  ] = useState("");
+  ] =
+    useState("");
 
-  const [page, setPage] = useState(1);
-
-  const [totalPages, setTotalPages] =
+  const [
+    page,
+    setPage,
+  ] =
     useState(1);
 
-  const [total, setTotal] = useState(0);
+  const [
+    totalPages,
+    setTotalPages,
+  ] =
+    useState(1);
 
-  const [thongKe, setThongKe] =
+  const [
+    total,
+    setTotal,
+  ] =
+    useState(0);
+
+  const [
+    thongKe,
+    setThongKe,
+  ] =
     useState<ThongKe>({
-      tong: 0,
-      chuaDoc: 0,
-      quanTrong: 0,
-      khanCap: 0,
+      ...EMPTY_STATS,
     });
 
-  const [showFormModal, setShowFormModal] =
+  const [
+    ,
+    setQuyen,
+  ] =
+    useState<QuyenThongBao | null>(
+      null,
+    );
+
+  const [
+    showFormModal,
+    setShowFormModal,
+  ] =
     useState(false);
 
   const [
     editingThongBao,
     setEditingThongBao,
-  ] = useState<ThongBao | null>(null);
+  ] =
+    useState<ThongBao | null>(
+      null,
+    );
 
   const [
     viewingThongBao,
     setViewingThongBao,
-  ] = useState<ThongBao | null>(null);
+  ] =
+    useState<ThongBao | null>(
+      null,
+    );
 
   const [
     deletingThongBao,
     setDeletingThongBao,
-  ] = useState<ThongBao | null>(null);
+  ] =
+    useState<ThongBao | null>(
+      null,
+    );
 
-  const canManage = [
-    "ADMIN",
-    "BAN_CHAP_HANH",
-    "CHI_HOI_TRUONG",
-  ].includes(userRole);
+  const [
+    approvalTarget,
+    setApprovalTarget,
+  ] =
+    useState<ThongBao | null>(
+      null,
+    );
 
-  const loadSession = useCallback(
-    async () => {
-      try {
-        const response = await fetch(
-          "/api/auth/me",
-          {
-            cache: "no-store",
-          },
+  const [
+    rejectTarget,
+    setRejectTarget,
+  ] =
+    useState<ThongBao | null>(
+      null,
+    );
+
+  const [
+    rejectReason,
+    setRejectReason,
+  ] =
+    useState("");
+
+  const canManage =
+    [
+      "ADMIN",
+      "BAN_CHAP_HANH",
+      "CHI_HOI_TRUONG",
+    ].includes(
+      userRole,
+    );
+
+  const isAdmin =
+    userRole ===
+    "ADMIN";
+
+  /* =======================================================
+     INITIAL URL QUERY
+  ======================================================= */
+
+  useEffect(
+    () => {
+      if (
+        queryInitializedRef.current
+      ) {
+        return;
+      }
+
+      queryInitializedRef.current =
+        true;
+
+      const params =
+        new URLSearchParams(
+          window.location.search,
         );
 
-        const result =
-          await parseResponse(response);
+      const status =
+        params.get(
+          "status",
+        );
 
-        const role =
-          result?.user?.role ??
-          result?.data?.user?.role ??
-          result?.data?.role;
+      if (
+        status &&
+        VALID_STATUS.includes(
+          status as
+            TrangThaiThongBao,
+        )
+      ) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Preserve existing loading and UI synchronization timing in this effect.
+        setTrangThaiFilter(
+          status,
+        );
 
-        if (role) {
-          setUserRole(role as UserRole);
-        }
-      } catch {
-        // DashboardShell xử lý đăng nhập.
-      } finally {
-        setSessionLoaded(true);
+        setPage(1);
       }
+
+      setQueryInitialized(
+        true,
+      );
     },
     [],
   );
 
-  const loadRecipients = useCallback(
-    async () => {
-      if (!canManage) return;
+  /* =======================================================
+     SESSION
+  ======================================================= */
 
-      try {
-        const response = await fetch(
-          "/api/thong-bao/nguoi-nhan",
-          {
-            cache: "no-store",
-          },
-        );
+  const loadSession =
+    useCallback(
+      async () => {
+        try {
+          const response =
+            await fetch(
+              "/api/auth/me",
+              {
+                cache:
+                  "no-store",
 
-        const result =
-          await parseResponse(response);
+                credentials:
+                  "include",
+              },
+            );
 
+          const result =
+            await parseResponse(
+              response,
+            );
+
+          const role =
+            result?.user
+              ?.role ??
+            result?.data
+              ?.user
+              ?.role ??
+            result?.data
+              ?.role;
+
+          if (role) {
+            setUserRole(
+              role as
+                UserRole,
+            );
+          }
+        } catch {
+          // DashboardShell xử lý phiên đăng nhập.
+        } finally {
+          setSessionLoaded(
+            true,
+          );
+        }
+      },
+      [],
+    );
+
+  /* =======================================================
+     RECIPIENT OPTIONS
+  ======================================================= */
+
+  const loadRecipients =
+    useCallback(
+      async () => {
+        if (!canManage) {
+          return;
+        }
+
+        try {
+          const response =
+            await fetch(
+              "/api/thong-bao/nguoi-nhan",
+              {
+                cache:
+                  "no-store",
+
+                credentials:
+                  "include",
+              },
+            );
+
+          const result =
+            await parseResponse(
+              response,
+            );
+
+          if (
+            !response.ok ||
+            result.success ===
+              false
+          ) {
+            return;
+          }
+
+          const data =
+            result.data ??
+            result;
+
+          const rawChiHoi =
+            data.chiHoi ??
+            data.danhSachChiHoi ??
+            [];
+
+          const rawNguoiDung =
+            data.nguoiDung ??
+            data.danhSachNguoiDung ??
+            [];
+
+          setChiHoiList(
+            rawChiHoi.map(
+              (
+                item:
+                  Partial<ChiHoiOption> & {
+                    _id?: string;
+                  },
+              ) => ({
+                id:
+                  getId(item),
+
+                maChiHoi:
+                  item.maChiHoi ??
+                  "",
+
+                tenChiHoi:
+                  item.tenChiHoi ??
+                  "",
+              }),
+            ),
+          );
+
+          setNguoiDungList(
+            rawNguoiDung.map(
+              (
+                item:
+                  Partial<NguoiDungOption> & {
+                    _id?: string;
+                    hoTen?: string;
+                    role:
+                      UserRole;
+                  },
+              ) => ({
+                id:
+                  getId(item),
+
+                username:
+                  item.username ??
+                  "",
+
+                fullName:
+                  item.fullName ??
+                  item.hoTen ??
+                  item.username ??
+                  "",
+
+                role:
+                  item.role,
+              }),
+            ),
+          );
+        } catch {
+          // Backend vẫn validate lại.
+        }
+      },
+      [
+        canManage,
+      ],
+    );
+
+  /* =======================================================
+     LOAD LIST
+  ======================================================= */
+
+  const loadThongBao =
+    useCallback(
+      async () => {
         if (
-          !response.ok ||
-          result.success === false
+          !sessionLoaded ||
+          !queryInitialized
         ) {
           return;
         }
 
-        const data = result.data ?? result;
+        setLoading(true);
+        setError("");
 
-        const rawChiHoi =
-          data.chiHoi ??
-          data.danhSachChiHoi ??
-          [];
+        try {
+          const params =
+            new URLSearchParams({
+              page:
+                String(page),
 
-        const rawNguoiDung =
-          data.nguoiDung ??
-          data.danhSachNguoiDung ??
-          [];
+              limit:
+                "10",
+            });
 
-        setChiHoiList(
-          rawChiHoi.map(
-            (item: Partial<ChiHoiOption> & { _id?: string }) => ({
-              id: getId(item),
-              maChiHoi:
-                item.maChiHoi ?? "",
-              tenChiHoi:
-                item.tenChiHoi ?? "",
-            }),
-          ),
-        );
+          if (canManage) {
+            params.set(
+              "mode",
+              "quan-ly",
+            );
+          }
 
-        setNguoiDungList(
-          rawNguoiDung.map(
-            (item: Partial<NguoiDungOption> & { _id?: string; hoTen?: string; role: UserRole }) => ({
-              id: getId(item),
+          if (
+            keyword.trim()
+          ) {
+            params.set(
+              "search",
+              keyword.trim(),
+            );
+          }
 
-              username:
-                item.username ?? "",
+          if (loaiFilter) {
+            params.set(
+              "loaiThongBao",
+              loaiFilter,
+            );
+          }
 
-              fullName:
-                item.fullName ??
-                item.hoTen ??
-                item.username ??
-                "",
+          if (mucDoFilter) {
+            params.set(
+              "mucDo",
+              mucDoFilter,
+            );
+          }
 
-              role: item.role,
-            }),
-          ),
-        );
-      } catch {
-        // API tạo thông báo tiếp tục kiểm tra.
-      }
-    },
-    [canManage],
-  );
+          if (
+            trangThaiFilter
+          ) {
+            params.set(
+              "trangThai",
+              trangThaiFilter,
+            );
+          }
 
-  const loadThongBao = useCallback(
-    async () => {
-      if (!sessionLoaded) return;
+          const response =
+            await fetch(
+              `/api/thong-bao?${params.toString()}`,
+              {
+                cache:
+                  "no-store",
 
-      setLoading(true);
-      setError("");
+                credentials:
+                  "include",
+              },
+            );
 
-      try {
-        const params =
-          new URLSearchParams({
-            page: String(page),
-            limit: "10",
+          const result =
+            await parseResponse(
+              response,
+            );
+
+          if (
+            !response.ok ||
+            result.success ===
+              false
+          ) {
+            throw new Error(
+              result.message ||
+                "Không thể tải thông báo",
+            );
+          }
+
+          const data =
+            result.data ??
+            result;
+
+          const rawList =
+            data.danhSach ??
+            data.items ??
+            data.thongBao ??
+            [];
+
+          const pagination =
+            data.phanTrang ??
+            data.pagination ??
+            {};
+
+          const rawThongKe =
+            data.thongKe ??
+            {};
+
+          const normalized:
+            ThongBao[] =
+            Array.isArray(
+              rawList,
+            )
+              ? rawList.map(
+                  normalizeThongBao,
+                )
+              : [];
+
+          setThongBaoList(
+            normalized,
+          );
+
+          setTotal(
+            Number(
+              pagination.total ??
+                data.total ??
+                normalized.length,
+            ),
+          );
+
+          setTotalPages(
+            Math.max(
+              1,
+
+              Number(
+                pagination.totalPages ??
+                  data.totalPages ??
+                  1,
+              ),
+            ),
+          );
+
+          setThongKe({
+            tong:
+              Number(
+                rawThongKe.tong ??
+                  normalized.length,
+              ),
+
+            chuaDoc:
+              Number(
+                rawThongKe.chuaDoc ??
+                  normalized.filter(
+                    (
+                      item,
+                    ) =>
+                      !item.daDoc,
+                  ).length,
+              ),
+
+            quanTrong:
+              Number(
+                rawThongKe.quanTrong ??
+                  0,
+              ),
+
+            khanCap:
+              Number(
+                rawThongKe.khanCap ??
+                  0,
+              ),
+
+            choDuyet:
+              Number(
+                rawThongKe.choDuyet ??
+                  0,
+              ),
+
+            tuChoi:
+              Number(
+                rawThongKe.tuChoi ??
+                  0,
+              ),
+
+            banNhap:
+              Number(
+                rawThongKe.banNhap ??
+                  0,
+              ),
+
+            daDang:
+              Number(
+                rawThongKe.daDang ??
+                  0,
+              ),
+
+            daAn:
+              Number(
+                rawThongKe.daAn ??
+                  0,
+              ),
           });
 
-        if (canManage) {
-          params.set("mode", "quan-ly");
-        }
+          if (
+            data.quyen
+          ) {
+            setQuyen({
+              role:
+                data.quyen.role ??
+                userRole,
 
-        if (keyword.trim()) {
-          params.set(
-            "search",
-            keyword.trim(),
-          );
-        }
+              canManage:
+                Boolean(
+                  data.quyen
+                    .canManage,
+                ),
 
-        if (loaiFilter) {
-          params.set(
-            "loaiThongBao",
-            loaiFilter,
-          );
-        }
+              canApprove:
+                Boolean(
+                  data.quyen
+                    .canApprove,
+                ),
 
-        if (mucDoFilter) {
-          params.set(
-            "mucDo",
-            mucDoFilter,
-          );
-        }
-
-        if (trangThaiFilter) {
-          params.set(
-            "trangThai",
-            trangThaiFilter,
-          );
-        }
-
-        const response = await fetch(
-          `/api/thong-bao?${params.toString()}`,
-          {
-            cache: "no-store",
-          },
-        );
-
-        const result =
-          await parseResponse(response);
-
-        if (
-          !response.ok ||
-          result.success === false
+              canPublishDirectly:
+                Boolean(
+                  data.quyen
+                    .canPublishDirectly,
+                ),
+            });
+          }
+        } catch (
+          requestError
         ) {
-          throw new Error(
-            result.message ||
-              "Không thể tải thông báo",
+          setError(
+            requestError instanceof
+              Error
+              ? requestError.message
+              : "Đã xảy ra lỗi khi tải thông báo",
           );
+        } finally {
+          setLoading(false);
+        }
+      },
+      [
+        sessionLoaded,
+        queryInitialized,
+        canManage,
+        page,
+        keyword,
+        loaiFilter,
+        mucDoFilter,
+        trangThaiFilter,
+        userRole,
+      ],
+    );
+
+  /* =======================================================
+     OPEN DETAIL BY ID
+  ======================================================= */
+
+  const openDetailById =
+    useCallback(
+      async (
+        id:
+          string,
+      ) => {
+        if (!id) {
+          return;
         }
 
-        const data = result.data ?? result;
+        setOpeningQuery(true);
+        setError("");
 
-        const rawList =
-          data.danhSach ??
-          data.items ??
-          data.thongBao ??
-          [];
+        try {
+          const response =
+            await fetch(
+              `/api/thong-bao/${encodeURIComponent(
+                id,
+              )}`,
+              {
+                cache:
+                  "no-store",
 
-        const pagination =
-          data.phanTrang ??
-          data.pagination ??
-          {};
+                credentials:
+                  "include",
+              },
+            );
 
-        const rawThongKe =
-          data.thongKe ?? {};
+          const result =
+            await parseResponse(
+              response,
+            );
 
-        const normalized: ThongBao[] =
-          rawList.map(normalizeThongBao);
+          if (
+            !response.ok ||
+            result.success ===
+              false
+          ) {
+            throw new Error(
+              result.message ||
+                "Không thể mở thông báo",
+            );
+          }
 
-        setThongBaoList(normalized);
+          const rawDetail =
+            result.data
+              ?.thongBao ??
+            result.data ??
+            result;
 
-        setTotal(
-          Number(
-            pagination.total ??
-              data.total ??
-              normalized.length,
-          ),
-        );
+          const detail =
+            normalizeThongBao(
+              rawDetail,
+            );
 
-        setTotalPages(
-          Math.max(
-            1,
-            Number(
-              pagination.totalPages ??
-                data.totalPages ??
-                1,
-            ),
-          ),
-        );
+          /*
+           * Nếu là người nhận và chưa đọc,
+           * đảm bảo trạng thái đọc được cập nhật.
+           *
+           * Khi đi từ DashboardShell thì route
+           * đã đánh dấu trước, nhưng gọi lại
+           * là idempotent.
+           */
+          if (
+            !canManage &&
+            !detail.daDoc
+          ) {
+            try {
+              const readResponse =
+                await fetch(
+                  `/api/thong-bao/${detail.id}/da-doc`,
+                  {
+                    method:
+                      "PATCH",
 
-        setThongKe({
-          tong: Number(
-            rawThongKe.tong ??
-              rawThongKe.tongThongBao ??
-              data.total ??
-              normalized.length,
-          ),
+                    credentials:
+                      "include",
 
-          chuaDoc: Number(
-            rawThongKe.chuaDoc ??
-              rawThongKe.soChuaDoc ??
-              normalized.filter(
-                (item) => !item.daDoc,
-              ).length,
-          ),
+                    headers: {
+                      "Content-Type":
+                        "application/json",
+                    },
 
-          quanTrong: Number(
-            rawThongKe.quanTrong ??
-              normalized.filter(
-                (item) =>
-                  item.mucDo ===
-                  "QUAN_TRONG",
-              ).length,
-          ),
+                    body:
+                      JSON.stringify({
+                        daDoc:
+                          true,
+                      }),
+                  },
+                );
 
-          khanCap: Number(
-            rawThongKe.khanCap ??
-              normalized.filter(
-                (item) =>
-                  item.mucDo ===
-                  "KHAN_CAP",
-              ).length,
-          ),
-        });
-      } catch (requestError) {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Đã xảy ra lỗi khi tải thông báo",
-        );
-      } finally {
-        setLoading(false);
-      }
+              if (
+                readResponse.ok
+              ) {
+                detail.daDoc =
+                  true;
+
+                setThongKe(
+                  (
+                    current,
+                  ) => ({
+                    ...current,
+
+                    chuaDoc:
+                      Math.max(
+                        0,
+                        current.chuaDoc -
+                          1,
+                      ),
+                  }),
+                );
+              }
+            } catch {
+              // Không chặn việc xem nội dung.
+            }
+          }
+
+          setViewingThongBao(
+            detail,
+          );
+
+          setThongBaoList(
+            (
+              current,
+            ) =>
+              current.map(
+                (
+                  item,
+                ) =>
+                  item.id ===
+                  detail.id
+                    ? {
+                        ...item,
+
+                        daDoc:
+                          detail.daDoc ??
+                          item.daDoc,
+                      }
+                    : item,
+              ),
+          );
+        } catch (
+          openError
+        ) {
+          setError(
+            openError instanceof
+              Error
+              ? openError.message
+              : "Không thể mở thông báo",
+          );
+        } finally {
+          setOpeningQuery(false);
+        }
+      },
+      [
+        canManage,
+      ],
+    );
+
+  /* =======================================================
+     EFFECTS
+  ======================================================= */
+
+  useEffect(
+    () => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Preserve existing loading and UI synchronization timing in this effect.
+      void loadSession();
     },
     [
-      sessionLoaded,
-      canManage,
-      page,
-      keyword,
-      loaiFilter,
-      mucDoFilter,
-      trangThaiFilter,
+      loadSession,
     ],
   );
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Start the request and its loading state together when effect dependencies change.
-    void loadSession();
-  }, [loadSession]);
+  useEffect(
+    () => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Preserve existing loading and UI synchronization timing in this effect.
+      void loadThongBao();
+    },
+    [
+      loadThongBao,
+    ],
+  );
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Start the request and its loading state together when effect dependencies change.
-    void loadThongBao();
-  }, [loadThongBao]);
+  useEffect(
+    () => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Preserve existing loading and UI synchronization timing in this effect.
+      void loadRecipients();
+    },
+    [
+      loadRecipients,
+    ],
+  );
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Start the request and its loading state together when effect dependencies change.
-    void loadRecipients();
-  }, [loadRecipients]);
+  /*
+   * Xử lý:
+   *
+   * /dashboard/thong-bao?open=<id>
+   */
+  useEffect(
+    () => {
+      if (
+        !sessionLoaded ||
+        !queryInitialized
+      ) {
+        return;
+      }
 
-  const openCreateModal = () => {
+      const params =
+        new URLSearchParams(
+          window.location.search,
+        );
+
+      const openId =
+        params
+          .get("open")
+          ?.trim() ??
+        "";
+
+      if (!openId) {
+        return;
+      }
+
+      if (
+        openedQueryIdRef.current ===
+        openId
+      ) {
+        return;
+      }
+
+      openedQueryIdRef.current =
+        openId;
+
+      void openDetailById(
+        openId,
+      );
+    },
+    [
+      sessionLoaded,
+      queryInitialized,
+      openDetailById,
+    ],
+  );
+
+  /* =======================================================
+     FORM
+  ======================================================= */
+
+  function openCreateModal() {
     setEditingThongBao(null);
     setShowFormModal(true);
     setError("");
     setSuccess("");
-  };
+  }
 
-  const openEditModal = (
-    item: ThongBao,
-  ) => {
-    setEditingThongBao(item);
-    setShowFormModal(true);
+  function openEditModal(
+    item:
+      ThongBao,
+  ) {
+    if (
+      !isAdmin &&
+      ![
+        "NHAP",
+        "TU_CHOI",
+      ].includes(
+        item.trangThai,
+      )
+    ) {
+      setError(
+        "Chỉ có thể sửa bản nháp hoặc thông báo đã bị từ chối.",
+      );
+
+      return;
+    }
+
+    setEditingThongBao(
+      item,
+    );
+
+    setShowFormModal(
+      true,
+    );
+
     setError("");
     setSuccess("");
-  };
+  }
 
-  const closeFormModal = () => {
-    if (saving) return;
+  function closeFormModal() {
+    if (saving) {
+      return;
+    }
 
     setShowFormModal(false);
     setEditingThongBao(null);
-  };
+  }
 
-  const handleViewDetail = async (
-    item: ThongBao,
-  ) => {
+  /* =======================================================
+     VIEW
+  ======================================================= */
+
+  async function handleViewDetail(
+    item:
+      ThongBao,
+  ) {
     setError("");
 
     try {
-      const response = await fetch(
-        `/api/thong-bao/${item.id}`,
-        {
-          cache: "no-store",
-        },
-      );
+      const response =
+        await fetch(
+          `/api/thong-bao/${item.id}`,
+          {
+            cache:
+              "no-store",
+
+            credentials:
+              "include",
+          },
+        );
 
       const result =
-        await parseResponse(response);
+        await parseResponse(
+          response,
+        );
 
       if (
         !response.ok ||
-        result.success === false
+        result.success ===
+          false
       ) {
         throw new Error(
           result.message ||
@@ -690,92 +1522,176 @@ export default function ThongBaoPage() {
       }
 
       const rawDetail =
-        result.data?.thongBao ??
+        result.data
+          ?.thongBao ??
         result.data ??
         result;
 
       const detail =
-        normalizeThongBao(rawDetail);
+        normalizeThongBao(
+          rawDetail,
+        );
 
-      setViewingThongBao(detail);
+      if (
+        !canManage &&
+        !item.daDoc
+      ) {
+        try {
+          const readResponse =
+            await fetch(
+              `/api/thong-bao/${item.id}/da-doc`,
+              {
+                method:
+                  "PATCH",
 
-      setThongBaoList((current) =>
-        current.map((notification) =>
-          notification.id === item.id
-            ? {
-                ...notification,
-                daDoc: true,
-              }
-            : notification,
-        ),
+                credentials:
+                  "include",
+
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+
+                body:
+                  JSON.stringify({
+                    daDoc:
+                      true,
+                  }),
+              },
+            );
+
+          if (
+            readResponse.ok
+          ) {
+            detail.daDoc =
+              true;
+
+            setThongKe(
+              (
+                current,
+              ) => ({
+                ...current,
+
+                chuaDoc:
+                  Math.max(
+                    0,
+                    current.chuaDoc -
+                      1,
+                  ),
+              }),
+            );
+          }
+        } catch {
+          // Vẫn cho xem nội dung.
+        }
+      }
+
+      setViewingThongBao(
+        detail,
       );
 
-      if (!item.daDoc && !canManage) {
-        setThongKe((current) => ({
-          ...current,
+      setThongBaoList(
+        (
+          current,
+        ) =>
+          current.map(
+            (
+              notification,
+            ) =>
+              notification.id ===
+              item.id
+                ? {
+                    ...notification,
 
-          chuaDoc: Math.max(
-            0,
-            current.chuaDoc - 1,
+                    daDoc:
+                      detail.daDoc ??
+                      notification.daDoc,
+                  }
+                : notification,
           ),
-        }));
-      }
-    } catch (requestError) {
+      );
+    } catch (
+      requestError
+    ) {
       setError(
-        requestError instanceof Error
+        requestError instanceof
+          Error
           ? requestError.message
           : "Không thể xem thông báo",
       );
     }
-  };
+  }
 
-  const handleSaveThongBao = async (
-    form: ThongBaoFormData,
-  ) => {
+  /* =======================================================
+     SAVE
+  ======================================================= */
+
+  async function handleSaveThongBao(
+    form:
+      ThongBaoFormData,
+  ) {
     setSaving(true);
     setError("");
     setSuccess("");
 
     try {
       const isEditing =
-        Boolean(editingThongBao);
+        Boolean(
+          editingThongBao,
+        );
 
-      const url = editingThongBao
-        ? `/api/thong-bao/${editingThongBao.id}`
-        : "/api/thong-bao";
+      const url =
+        editingThongBao
+          ? `/api/thong-bao/${editingThongBao.id}`
+          : "/api/thong-bao";
 
-      const response = await fetch(url, {
-        method: editingThongBao
-          ? "PUT"
-          : "POST",
+      const response =
+        await fetch(
+          url,
+          {
+            method:
+              editingThongBao
+                ? "PUT"
+                : "POST",
 
-        headers: {
-          "Content-Type": "application/json",
-        },
+            credentials:
+              "include",
 
-        body: JSON.stringify({
-          ...form,
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-          ngayBatDau: form.ngayBatDau
-            ? new Date(
-                form.ngayBatDau,
-              ).toISOString()
-            : null,
+            body:
+              JSON.stringify({
+                ...form,
 
-          ngayKetThuc: form.ngayKetThuc
-            ? new Date(
-                form.ngayKetThuc,
-              ).toISOString()
-            : null,
-        }),
-      });
+                ngayBatDau:
+                  form.ngayBatDau
+                    ? new Date(
+                        form.ngayBatDau,
+                      ).toISOString()
+                    : null,
+
+                ngayKetThuc:
+                  form.ngayKetThuc
+                    ? new Date(
+                        form.ngayKetThuc,
+                      ).toISOString()
+                    : null,
+              }),
+          },
+        );
 
       const result =
-        await parseResponse(response);
+        await parseResponse(
+          response,
+        );
 
       if (
         !response.ok ||
-        result.success === false
+        result.success ===
+          false
       ) {
         throw new Error(
           result.message ||
@@ -787,37 +1703,67 @@ export default function ThongBaoPage() {
       setEditingThongBao(null);
 
       setSuccess(
-        isEditing
-          ? "Cập nhật thông báo thành công"
-          : "Tạo thông báo thành công",
+        result.message ||
+          (
+            isEditing
+              ? "Cập nhật thông báo thành công"
+              : isAdmin
+                ? "Tạo thông báo thành công"
+                : "Tạo thông báo thành công. Đang chờ Quản trị viên duyệt."
+          ),
       );
 
       await loadThongBao();
+    } catch (
+      saveError
+    ) {
+      setError(
+        saveError instanceof
+          Error
+          ? saveError.message
+          : "Không thể lưu thông báo",
+      );
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  const handleDelete = async () => {
-    if (!deletingThongBao) return;
+  /* =======================================================
+     DELETE
+  ======================================================= */
+
+  async function handleDelete() {
+    if (
+      !deletingThongBao
+    ) {
+      return;
+    }
 
     setSaving(true);
     setError("");
 
     try {
-      const response = await fetch(
-        `/api/thong-bao/${deletingThongBao.id}`,
-        {
-          method: "DELETE",
-        },
-      );
+      const response =
+        await fetch(
+          `/api/thong-bao/${deletingThongBao.id}`,
+          {
+            method:
+              "DELETE",
+
+            credentials:
+              "include",
+          },
+        );
 
       const result =
-        await parseResponse(response);
+        await parseResponse(
+          response,
+        );
 
       if (
         !response.ok ||
-        result.success === false
+        result.success ===
+          false
       ) {
         throw new Error(
           result.message ||
@@ -828,37 +1774,225 @@ export default function ThongBaoPage() {
       setDeletingThongBao(null);
 
       setSuccess(
-        "Xóa thông báo thành công",
+        result.message ||
+          "Xóa thông báo thành công",
       );
 
       if (
-        thongBaoList.length === 1 &&
+        thongBaoList.length ===
+          1 &&
         page > 1
       ) {
         setPage(
-          (current) => current - 1,
+          (
+            current,
+          ) =>
+            current -
+            1,
         );
       } else {
         await loadThongBao();
       }
-    } catch (requestError) {
+    } catch (
+      requestError
+    ) {
       setError(
-        requestError instanceof Error
+        requestError instanceof
+          Error
           ? requestError.message
           : "Không thể xóa thông báo",
       );
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  const handleMarkAllRead = async () => {
-    const unreadItems =
-      thongBaoList.filter(
-        (item) => !item.daDoc,
+  /* =======================================================
+     APPROVE
+  ======================================================= */
+
+  async function handleApprove() {
+    if (
+      !approvalTarget
+    ) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response =
+        await fetch(
+          `/api/thong-bao/${approvalTarget.id}/phe-duyet`,
+          {
+            method:
+              "PATCH",
+
+            credentials:
+              "include",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                action:
+                  "DUYET",
+              }),
+          },
+        );
+
+      const result =
+        await parseResponse(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        result.success ===
+          false
+      ) {
+        throw new Error(
+          result.message ||
+            "Không thể duyệt thông báo",
+        );
+      }
+
+      setApprovalTarget(null);
+
+      setSuccess(
+        result.message ||
+          "Duyệt thông báo thành công",
       );
 
-    if (unreadItems.length === 0) {
+      await loadThongBao();
+    } catch (
+      approveError
+    ) {
+      setError(
+        approveError instanceof
+          Error
+          ? approveError.message
+          : "Không thể duyệt thông báo",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* =======================================================
+     REJECT
+  ======================================================= */
+
+  async function handleReject() {
+    if (
+      !rejectTarget
+    ) {
+      return;
+    }
+
+    const reason =
+      rejectReason.trim();
+
+    if (!reason) {
+      setError(
+        "Vui lòng nhập lý do từ chối.",
+      );
+
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response =
+        await fetch(
+          `/api/thong-bao/${rejectTarget.id}/phe-duyet`,
+          {
+            method:
+              "PATCH",
+
+            credentials:
+              "include",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                action:
+                  "TU_CHOI",
+
+                lyDoTuChoi:
+                  reason,
+              }),
+          },
+        );
+
+      const result =
+        await parseResponse(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        result.success ===
+          false
+      ) {
+        throw new Error(
+          result.message ||
+            "Không thể từ chối thông báo",
+        );
+      }
+
+      setRejectTarget(null);
+      setRejectReason("");
+
+      setSuccess(
+        result.message ||
+          "Đã từ chối thông báo",
+      );
+
+      await loadThongBao();
+    } catch (
+      rejectError
+    ) {
+      setError(
+        rejectError instanceof
+          Error
+          ? rejectError.message
+          : "Không thể từ chối thông báo",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* =======================================================
+     MARK ALL READ
+  ======================================================= */
+
+  async function handleMarkAllRead() {
+    const unreadItems =
+      thongBaoList.filter(
+        (
+          item,
+        ) =>
+          !item.daDoc,
+      );
+
+    if (
+      unreadItems.length ===
+      0
+    ) {
       return;
     }
 
@@ -867,96 +2001,288 @@ export default function ThongBaoPage() {
 
     try {
       await Promise.all(
-        unreadItems.map(async (item) => {
-          const response = await fetch(
-            `/api/thong-bao/${item.id}/da-doc`,
-            {
-              method: "PATCH",
+        unreadItems.map(
+          async (
+            item,
+          ) => {
+            const response =
+              await fetch(
+                `/api/thong-bao/${item.id}/da-doc`,
+                {
+                  method:
+                    "PATCH",
 
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+                  credentials:
+                    "include",
 
-              body: JSON.stringify({
-                daDoc: true,
-              }),
-            },
-          );
+                  headers: {
+                    "Content-Type":
+                      "application/json",
+                  },
 
-          if (!response.ok) {
-            throw new Error(
-              "Không thể đánh dấu đã đọc",
-            );
-          }
+                  body:
+                    JSON.stringify({
+                      daDoc:
+                        true,
+                    }),
+                },
+              );
+
+            if (
+              !response.ok
+            ) {
+              throw new Error(
+                "Không thể đánh dấu đã đọc",
+              );
+            }
+          },
+        ),
+      );
+
+      setThongBaoList(
+        (
+          current,
+        ) =>
+          current.map(
+            (
+              item,
+            ) => ({
+              ...item,
+
+              daDoc:
+                true,
+            }),
+          ),
+      );
+
+      setThongKe(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          chuaDoc:
+            0,
         }),
       );
-
-      setThongBaoList((current) =>
-        current.map((item) => ({
-          ...item,
-          daDoc: true,
-        })),
-      );
-
-      setThongKe((current) => ({
-        ...current,
-        chuaDoc: 0,
-      }));
 
       setSuccess(
         "Đã đánh dấu tất cả thông báo là đã đọc",
       );
-    } catch (requestError) {
+    } catch (
+      requestError
+    ) {
       setError(
-        requestError instanceof Error
+        requestError instanceof
+          Error
           ? requestError.message
           : "Không thể cập nhật thông báo",
       );
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  const resetFilters = () => {
+  /* =======================================================
+     FILTER
+  ======================================================= */
+
+  function resetFilters() {
     setKeyword("");
     setLoaiFilter("");
     setMucDoFilter("");
     setTrangThaiFilter("");
     setPage(1);
-  };
+
+    /*
+     * Xóa query status nhưng giữ open nếu có.
+     */
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
+    params.delete("status");
+
+    const next =
+      params.toString();
+
+    window.history.replaceState(
+      null,
+      "",
+      next
+        ? `/dashboard/thong-bao?${next}`
+        : "/dashboard/thong-bao",
+    );
+  }
+
+  function quickStatusFilter(
+    status:
+      TrangThaiThongBao,
+  ) {
+    setTrangThaiFilter(
+      status,
+    );
+
+    setPage(1);
+
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
+    params.set(
+      "status",
+      status,
+    );
+
+    params.delete(
+      "open",
+    );
+
+    window.history.replaceState(
+      null,
+      "",
+      `/dashboard/thong-bao?${params.toString()}`,
+    );
+  }
+
+  function handleStatusFilterChange(
+    value:
+      string,
+  ) {
+    setTrangThaiFilter(
+      value,
+    );
+
+    setPage(1);
+
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
+    if (value) {
+      params.set(
+        "status",
+        value,
+      );
+    } else {
+      params.delete(
+        "status",
+      );
+    }
+
+    params.delete(
+      "open",
+    );
+
+    const query =
+      params.toString();
+
+    window.history.replaceState(
+      null,
+      "",
+      query
+        ? `/dashboard/thong-bao?${query}`
+        : "/dashboard/thong-bao",
+    );
+  }
+
+  function closeDetailModal() {
+    setViewingThongBao(
+      null,
+    );
+
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
+    params.delete(
+      "open",
+    );
+
+    const query =
+      params.toString();
+
+    window.history.replaceState(
+      null,
+      "",
+      query
+        ? `/dashboard/thong-bao?${query}`
+        : "/dashboard/thong-bao",
+    );
+
+    openedQueryIdRef.current =
+      "";
+  }
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-7 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1540px]">
-        <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+    <main className="min-h-screen bg-slate-100 px-3 py-6 sm:px-5 lg:px-8">
+      <div className="mx-auto max-w-[1600px]">
+
+        {/* HEADER */}
+
+        <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.24em] text-[#123b68]">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-[#123b68]">
               Quản trị hệ thống
             </p>
 
-            <h1 className="text-3xl font-bold text-slate-950">
+            <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">
               Thông báo và tài liệu
             </h1>
 
-            <p className="mt-2 text-sm text-slate-600">
-              Theo dõi thông báo, đối tượng
-              nhận và tài liệu đính kèm.
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Quản lý thông báo, phạm vi người nhận, tài liệu đính kèm và quy trình phê duyệt trước khi phát hành.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                void loadThongBao()
+              }
+              disabled={
+                loading
+              }
+              className="notification-secondary-button"
+            >
+              <RefreshCw
+                size={17}
+                className={
+                  loading
+                    ? "animate-spin"
+                    : ""
+                }
+              />
+
+              Làm mới
+            </button>
+
             {!canManage && (
               <button
                 type="button"
-                onClick={handleMarkAllRead}
+                onClick={() =>
+                  void handleMarkAllRead()
+                }
                 disabled={
                   saving ||
-                  thongKe.chuaDoc === 0
+                  thongKe.chuaDoc ===
+                    0
                 }
                 className="notification-secondary-button"
               >
-                <CheckCheck size={18} />
+                <CheckCheck
+                  size={17}
+                />
+
                 Đánh dấu đã đọc
               </button>
             )}
@@ -964,89 +2290,280 @@ export default function ThongBaoPage() {
             {canManage && (
               <button
                 type="button"
-                onClick={openCreateModal}
+                onClick={
+                  openCreateModal
+                }
                 className="notification-primary-button"
               >
-                <Plus size={19} />
+                <Plus
+                  size={18}
+                />
+
                 Tạo thông báo
               </button>
             )}
           </div>
         </div>
 
+        {/* QUERY OPEN LOADING */}
+
+        {openingQuery && (
+          <div className="mb-5 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            <Loader2
+              size={18}
+              className="animate-spin"
+            />
+
+            Đang mở thông báo...
+          </div>
+        )}
+
+        {/* ALERT */}
+
         {error && (
-          <Notice
+          <AlertBox
             type="error"
-            text={error}
-            onClose={() => setError("")}
+            message={error}
+            onClose={() =>
+              setError("")
+            }
           />
         )}
 
         {success && (
-          <Notice
+          <AlertBox
             type="success"
-            text={success}
-            onClose={() => setSuccess("")}
+            message={success}
+            onClose={() =>
+              setSuccess("")
+            }
           />
         )}
 
-        <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
-          <StatisticCard
-            title="Tổng thông báo"
-            value={thongKe.tong}
-            icon={<Bell />}
-            color="blue"
-          />
+        {/* BCH NOTICE */}
 
-          <StatisticCard
-            title="Chưa đọc"
-            value={thongKe.chuaDoc}
-            icon={<FileText />}
-            color="amber"
-          />
+        {canManage &&
+          !isAdmin && (
+          <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <Clock3
+                size={20}
+                className="mt-0.5 shrink-0 text-amber-700"
+              />
 
-          <StatisticCard
-            title="Quan trọng"
-            value={thongKe.quanTrong}
-            icon={<Megaphone />}
-            color="emerald"
-          />
+              <div>
+                <p className="text-sm font-bold text-amber-900">
+                  Thông báo cần được phê duyệt
+                </p>
 
-          <StatisticCard
-            title="Khẩn cấp"
-            value={thongKe.khanCap}
-            icon={<AlertCircle />}
-            color="red"
-          />
-        </div>
+                <p className="mt-1 text-sm leading-6 text-amber-700">
+                  Khi bạn chọn phát hành, thông báo sẽ chuyển sang trạng thái Chờ duyệt. Chỉ sau khi Quản trị viên duyệt thì thông báo mới hiển thị với người nhận.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="grid grid-cols-1 gap-3 border-b border-slate-200 p-4 lg:grid-cols-[1fr_220px_190px_190px_130px]">
+        {/* STATS */}
+
+        {canManage ? (
+          <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <WorkflowStatCard
+              icon={
+                <Bell
+                  size={20}
+                />
+              }
+              label="Tổng thông báo"
+              value={
+                thongKe.tong
+              }
+              onClick={() => {
+                handleStatusFilterChange(
+                  "",
+                );
+              }}
+            />
+
+            <WorkflowStatCard
+              icon={
+                <Clock3
+                  size={20}
+                />
+              }
+              label="Chờ duyệt"
+              value={
+                thongKe.choDuyet
+              }
+              tone="warning"
+              onClick={() =>
+                quickStatusFilter(
+                  "CHO_DUYET",
+                )
+              }
+            />
+
+            <WorkflowStatCard
+              icon={
+                <CheckCircle2
+                  size={20}
+                />
+              }
+              label="Đã đăng"
+              value={
+                thongKe.daDang
+              }
+              tone="success"
+              onClick={() =>
+                quickStatusFilter(
+                  "DA_DANG",
+                )
+              }
+            />
+
+            <WorkflowStatCard
+              icon={
+                <FileText
+                  size={20}
+                />
+              }
+              label="Bản nháp"
+              value={
+                thongKe.banNhap
+              }
+              onClick={() =>
+                quickStatusFilter(
+                  "NHAP",
+                )
+              }
+            />
+
+            <WorkflowStatCard
+              icon={
+                <XCircle
+                  size={20}
+                />
+              }
+              label="Bị từ chối"
+              value={
+                thongKe.tuChoi
+              }
+              tone="danger"
+              onClick={() =>
+                quickStatusFilter(
+                  "TU_CHOI",
+                )
+              }
+            />
+
+            <WorkflowStatCard
+              icon={
+                <Archive
+                  size={20}
+                />
+              }
+              label="Đã ẩn"
+              value={
+                thongKe.daAn
+              }
+              onClick={() =>
+                quickStatusFilter(
+                  "DA_AN",
+                )
+              }
+            />
+          </div>
+        ) : (
+          <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <WorkflowStatCard
+              icon={
+                <Bell
+                  size={20}
+                />
+              }
+              label="Tổng thông báo"
+              value={
+                thongKe.tong
+              }
+            />
+
+            <WorkflowStatCard
+              icon={
+                <Megaphone
+                  size={20}
+                />
+              }
+              label="Chưa đọc"
+              value={
+                thongKe.chuaDoc
+              }
+              tone="warning"
+            />
+
+            <WorkflowStatCard
+              icon={
+                <AlertCircle
+                  size={20}
+                />
+              }
+              label="Quan trọng"
+              value={
+                thongKe.quanTrong
+              }
+            />
+
+            <WorkflowStatCard
+              icon={
+                <AlertCircle
+                  size={20}
+                />
+              }
+              label="Khẩn cấp"
+              value={
+                thongKe.khanCap
+              }
+              tone="danger"
+            />
+          </div>
+        )}
+
+        {/* FILTER */}
+
+        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr_1fr_1fr_auto]">
             <div className="relative">
               <Search
-                size={19}
-                className="absolute  top-1/2 -translate-y-1/2 text-slate-400 "
+                size={18}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
               />
 
               <input
                 value={keyword}
-                onChange={(event) => {
+                onChange={(
+                  event,
+                ) => {
                   setKeyword(
-                    event.target.value,
+                    event.target
+                      .value,
                   );
 
                   setPage(1);
                 }}
-                placeholder="Tìm theo tiêu đề hoặc nội dung"
-                className="notification-control pl-10 ml-2 "
+                placeholder="Tìm mã, tiêu đề hoặc nội dung..."
+                className="notification-control pl-10"
               />
             </div>
 
             <select
-              value={loaiFilter}
-              onChange={(event) => {
+              value={
+                loaiFilter
+              }
+              onChange={(
+                event,
+              ) => {
                 setLoaiFilter(
-                  event.target.value,
+                  event.target
+                    .value,
                 );
 
                 setPage(1);
@@ -1057,23 +2574,33 @@ export default function ThongBaoPage() {
                 Tất cả loại
               </option>
 
-              {Object.entries(
-                LOAI_LABEL,
-              ).map(([value, label]) => (
-                <option
-                  key={value}
-                  value={value}
-                >
-                  {label}
-                </option>
-              ))}
+              <option value="THONG_BAO_CHUNG">
+                Thông báo chung
+              </option>
+
+              <option value="HOAT_DONG">
+                Hoạt động
+              </option>
+
+              <option value="TAI_LIEU">
+                Tài liệu
+              </option>
+
+              <option value="KHAC">
+                Khác
+              </option>
             </select>
 
             <select
-              value={mucDoFilter}
-              onChange={(event) => {
+              value={
+                mucDoFilter
+              }
+              onChange={(
+                event,
+              ) => {
                 setMucDoFilter(
-                  event.target.value,
+                  event.target
+                    .value,
                 );
 
                 setPage(1);
@@ -1099,14 +2626,17 @@ export default function ThongBaoPage() {
 
             {canManage ? (
               <select
-                value={trangThaiFilter}
-                onChange={(event) => {
-                  setTrangThaiFilter(
-                    event.target.value,
-                  );
-
-                  setPage(1);
-                }}
+                value={
+                  trangThaiFilter
+                }
+                onChange={(
+                  event,
+                ) =>
+                  handleStatusFilterChange(
+                    event.target
+                      .value,
+                  )
+                }
                 className="notification-control"
               >
                 <option value="">
@@ -1117,8 +2647,16 @@ export default function ThongBaoPage() {
                   Bản nháp
                 </option>
 
+                <option value="CHO_DUYET">
+                  Chờ duyệt
+                </option>
+
                 <option value="DA_DANG">
                   Đã đăng
+                </option>
+
+                <option value="TU_CHOI">
+                  Bị từ chối
                 </option>
 
                 <option value="DA_AN">
@@ -1126,680 +2664,927 @@ export default function ThongBaoPage() {
                 </option>
               </select>
             ) : (
-              <div className="hidden lg:block" />
+              <div />
             )}
 
             <button
               type="button"
-              onClick={resetFilters}
+              onClick={
+                resetFilters
+              }
               className="notification-secondary-button justify-center"
             >
-              <RefreshCw size={17} />
-              Làm mới
+              <RefreshCw
+                size={16}
+              />
+
+              Xóa lọc
             </button>
+          </div>
+        </section>
+
+        {/* LIST */}
+
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div>
+              <h2 className="font-bold text-slate-900">
+                Danh sách thông báo
+              </h2>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {total} kết quả
+              </p>
+            </div>
+
+            {isAdmin &&
+              thongKe.choDuyet >
+                0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    quickStatusFilter(
+                      "CHO_DUYET",
+                    )
+                  }
+                  className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700"
+                >
+                  <Clock3
+                    size={15}
+                  />
+
+                  {
+                    thongKe.choDuyet
+                  }{" "}
+                  đang chờ duyệt
+                </button>
+              )}
           </div>
 
           {loading ? (
-            <div className="flex h-72 items-center justify-center">
-              <Loader2
-                size={34}
-                className="animate-spin text-[#123b68]"
-              />
-            </div>
-          ) : thongBaoList.length === 0 ? (
-            <div className="flex h-72 flex-col items-center justify-center text-center">
-              <Bell
-                size={42}
-                className="text-slate-300"
-              />
+            <div className="flex min-h-[320px] items-center justify-center">
+              <div className="text-center">
+                <Loader2
+                  size={32}
+                  className="mx-auto animate-spin text-[#123b68]"
+                />
 
-              <p className="mt-4 font-semibold text-slate-700">
-                Chưa có thông báo phù hợp
-              </p>
+                <p className="mt-3 text-sm text-slate-500">
+                  Đang tải thông báo...
+                </p>
+              </div>
+            </div>
+          ) : thongBaoList.length ===
+            0 ? (
+            <div className="flex min-h-[320px] flex-col items-center justify-center p-6 text-center">
+              <div className="grid h-16 w-16 place-items-center rounded-full bg-slate-100 text-slate-400">
+                <Bell
+                  size={28}
+                />
+              </div>
+
+              <h3 className="mt-4 font-bold text-slate-800">
+                Không có thông báo
+              </h3>
 
               <p className="mt-1 text-sm text-slate-500">
-                Hãy thay đổi bộ lọc hoặc tạo
-                thông báo mới.
+                Không tìm thấy dữ liệu phù hợp với bộ lọc hiện tại.
               </p>
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {thongBaoList.map((item) => (
-                <NotificationRow
-                  key={item.id}
-                  item={item}
-                  canManage={canManage}
-                  onView={() =>
-                    void handleViewDetail(item)
-                  }
-                  onEdit={() =>
-                    openEditModal(item)
-                  }
-                  onDelete={() =>
-                    setDeletingThongBao(item)
-                  }
-                />
-              ))}
+              {thongBaoList.map(
+                (
+                  item,
+                ) => (
+                  <NotificationRow
+                    key={item.id}
+                    item={item}
+                    canManage={
+                      canManage
+                    }
+                    isAdmin={
+                      isAdmin
+                    }
+                    onView={() =>
+                      void handleViewDetail(
+                        item,
+                      )
+                    }
+                    onEdit={() =>
+                      openEditModal(
+                        item,
+                      )
+                    }
+                    onDelete={() =>
+                      setDeletingThongBao(
+                        item,
+                      )
+                    }
+                    onApprove={() =>
+                      setApprovalTarget(
+                        item,
+                      )
+                    }
+                    onReject={() => {
+                      setRejectTarget(
+                        item,
+                      );
+
+                      setRejectReason(
+                        "",
+                      );
+                    }}
+                  />
+                ),
+              )}
             </div>
           )}
 
-          <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row">
+          {/* PAGINATION */}
+
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500">
-              Tổng cộng {total} thông báo
+              Trang{" "}
+              <strong className="text-slate-800">
+                {page}
+              </strong>{" "}
+              /{" "}
+              <strong className="text-slate-800">
+                {totalPages}
+              </strong>
             </p>
 
-            <div className="flex items-center gap-2">
+            <div className="flex gap-2">
               <button
                 type="button"
-                disabled={page <= 1}
                 onClick={() =>
                   setPage(
-                    (current) => current - 1,
+                    (
+                      current,
+                    ) =>
+                      Math.max(
+                        1,
+                        current - 1,
+                      ),
                   )
                 }
-                className="notification-page-button"
+                disabled={
+                  page <= 1 ||
+                  loading
+                }
+                className="notification-secondary-button"
               >
-                <ChevronLeft size={17} />
+                <ChevronLeft
+                  size={17}
+                />
+
+                Trước
               </button>
 
-              <span className="px-2 text-sm text-slate-600">
-                Trang {page}/{totalPages}
-              </span>
-
               <button
                 type="button"
-                disabled={page >= totalPages}
                 onClick={() =>
                   setPage(
-                    (current) => current + 1,
+                    (
+                      current,
+                    ) =>
+                      Math.min(
+                        totalPages,
+                        current + 1,
+                      ),
                   )
                 }
-                className="notification-page-button"
+                disabled={
+                  page >=
+                    totalPages ||
+                  loading
+                }
+                className="notification-secondary-button"
               >
-                <ChevronRight size={17} />
+                Sau
+
+                <ChevronRight
+                  size={17}
+                />
               </button>
             </div>
           </div>
         </section>
       </div>
 
+      {/* FORM */}
+
       <ThongBaoFormModal
-        open={showFormModal}
-        initialData={editingThongBao}
-        chiHoiList={chiHoiList}
-        nguoiDungList={nguoiDungList}
-        saving={saving}
-        onClose={closeFormModal}
-        onSubmit={handleSaveThongBao}
+        open={
+          showFormModal
+        }
+        initialData={
+          editingThongBao
+        }
+        saving={
+          saving
+        }
+        userRole={
+          userRole
+        }
+        chiHoiList={
+          chiHoiList
+        }
+        nguoiDungList={
+          nguoiDungList
+        }
+        onClose={
+          closeFormModal
+        }
+        onSubmit={
+          handleSaveThongBao
+        }
       />
+
+      {/* DETAIL */}
 
       <DetailModal
-        item={viewingThongBao}
-        onClose={() =>
-          setViewingThongBao(null)
+        item={
+          viewingThongBao
+        }
+        onClose={
+          closeDetailModal
         }
       />
 
+      {/* DELETE */}
+
       <ConfirmModal
-        open={Boolean(deletingThongBao)}
-        loading={saving}
-        title="Xóa thông báo"
-        message={`Bạn có chắc muốn xóa thông báo “${
-          deletingThongBao?.tieuDe ?? ""
-        }”?`}
-        onClose={() =>
-          setDeletingThongBao(null)
+        open={
+          Boolean(
+            deletingThongBao,
+          )
         }
-        onConfirm={handleDelete}
+        loading={
+          saving
+        }
+        title="Xóa thông báo"
+        message={
+          deletingThongBao
+            ? `Bạn có chắc muốn xóa “${deletingThongBao.tieuDe}”?`
+            : ""
+        }
+        onClose={() =>
+          setDeletingThongBao(
+            null,
+          )
+        }
+        onConfirm={() =>
+          void handleDelete()
+        }
       />
+
+      {/* APPROVE */}
+
+      <ApproveModal
+        item={
+          approvalTarget
+        }
+        loading={
+          saving
+        }
+        onClose={() =>
+          setApprovalTarget(
+            null,
+          )
+        }
+        onConfirm={() =>
+          void handleApprove()
+        }
+      />
+
+      {/* REJECT */}
+
+      <RejectModal
+        item={
+          rejectTarget
+        }
+        reason={
+          rejectReason
+        }
+        loading={
+          saving
+        }
+        onReasonChange={
+          setRejectReason
+        }
+        onClose={() => {
+          if (saving) {
+            return;
+          }
+
+          setRejectTarget(
+            null,
+          );
+
+          setRejectReason(
+            "",
+          );
+        }}
+        onConfirm={() =>
+          void handleReject()
+        }
+      />
+
+      {/* GLOBAL STYLES */}
 
       <style jsx global>{`
         .notification-control {
-          height: 46px;
           width: 100%;
-          border: 1px solid #cbd5e1;
-          border-radius: 12px;
-          background: #ffffff;
-          padding: 0 14px;
-          font-size: 14px;
-          color: #1e293b;
+          height: 44px;
+          border-radius: 0.75rem;
+          border: 1px solid rgb(203 213 225);
+          background: white;
+          padding: 0 0.875rem;
+          font-size: 0.875rem;
+          color: rgb(30 41 59);
           outline: none;
-          transition: 0.15s;
+          transition: 0.15s ease;
         }
 
         .notification-control:focus {
-          border-color: #2563eb;
-          box-shadow: 0 0 0 3px #dbeafe;
+          border-color: rgb(37 99 235);
+          box-shadow: 0 0 0 3px rgb(219 234 254);
         }
 
-        .notification-primary-button,
-        .notification-secondary-button {
-          height: 44px;
-          border-radius: 11px;
-          padding: 0 17px;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 14px;
-          font-weight: 600;
-          transition: 0.15s;
+        .notification-control:disabled {
+          cursor: not-allowed;
+          background: rgb(248 250 252);
+          opacity: 0.7;
         }
 
         .notification-primary-button {
+          display: inline-flex;
+          min-height: 44px;
+          align-items: center;
+          gap: 0.5rem;
+          border-radius: 0.75rem;
           background: #123b68;
-          color: #ffffff;
+          padding: 0 1rem;
+          font-size: 0.875rem;
+          font-weight: 700;
+          color: white;
+          transition: 0.15s ease;
         }
 
         .notification-primary-button:hover {
           background: #0d3158;
         }
 
+        .notification-primary-button:disabled {
+          cursor: not-allowed;
+          opacity: 0.5;
+        }
+
         .notification-secondary-button {
-          border: 1px solid #cbd5e1;
-          background: #ffffff;
-          color: #334155;
+          display: inline-flex;
+          min-height: 44px;
+          align-items: center;
+          gap: 0.5rem;
+          border-radius: 0.75rem;
+          border: 1px solid rgb(203 213 225);
+          background: white;
+          padding: 0 1rem;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: rgb(51 65 85);
+          transition: 0.15s ease;
         }
 
         .notification-secondary-button:hover {
-          background: #f8fafc;
+          background: rgb(248 250 252);
         }
 
-        .notification-primary-button:disabled,
         .notification-secondary-button:disabled {
-          opacity: 0.5;
           cursor: not-allowed;
-        }
-
-        .notification-page-button {
-          width: 36px;
-          height: 36px;
-          border: 1px solid #cbd5e1;
-          border-radius: 9px;
-          display: grid;
-          place-items: center;
-          background: #ffffff;
-        }
-
-        .notification-page-button:disabled {
-          opacity: 0.4;
-          cursor: not-allowed;
+          opacity: 0.45;
         }
       `}</style>
     </main>
   );
 }
 
-function Notice({
-  type,
-  text,
-  onClose,
-}: {
-  type: "error" | "success";
-  text: string;
-  onClose: () => void;
-}) {
-  const colorClass =
-    type === "error"
-      ? "border-red-200 bg-red-50 text-red-700"
-      : "border-emerald-200 bg-emerald-50 text-emerald-700";
-
-  return (
-    <div
-      className={`mb-5 flex items-center gap-3 rounded-xl border px-4 py-3 text-sm ${colorClass}`}
-    >
-      {type === "error" ? (
-        <AlertCircle size={18} />
-      ) : (
-        <Check size={18} />
-      )}
-
-      <span className="flex-1">
-        {text}
-      </span>
-
-      <button
-        type="button"
-        onClick={onClose}
-      >
-        <X size={17} />
-      </button>
-    </div>
-  );
-}
-
-function StatisticCard({
-  title,
-  value,
-  icon,
-  color,
-}: {
-  title: string;
-  value: number;
-  icon: ReactNode;
-  color:
-    | "blue"
-    | "amber"
-    | "emerald"
-    | "red";
-}) {
-  const colorClasses = {
-    blue: "bg-blue-50 text-blue-700",
-    amber: "bg-amber-50 text-amber-600",
-    emerald:
-      "bg-emerald-50 text-emerald-600",
-    red: "bg-red-50 text-red-600",
-  };
-
-  return (
-    <div className="flex min-h-28 items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div>
-        <p className="text-sm text-slate-600">
-          {title}
-        </p>
-
-        <strong className="mt-2 block text-2xl text-slate-950">
-          {value}
-        </strong>
-      </div>
-
-      <div
-        className={`grid h-12 w-12 place-items-center rounded-xl ${colorClasses[color]}`}
-      >
-        {icon}
-      </div>
-    </div>
-  );
-}
-
-function NotificationBadge({
-  item,
-}: {
-  item: ThongBao;
-}) {
-  let colorClass =
-    "border-blue-200 bg-blue-50 text-blue-700";
-
-  let label = "Thông thường";
-
-  if (item.mucDo === "QUAN_TRONG") {
-    colorClass =
-      "border-amber-200 bg-amber-50 text-amber-700";
-
-    label = "Quan trọng";
-  }
-
-  if (item.mucDo === "KHAN_CAP") {
-    colorClass =
-      "border-red-200 bg-red-50 text-red-700";
-
-    label = "Khẩn cấp";
-  }
-
-  return (
-    <span
-      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${colorClass}`}
-    >
-      {label}
-    </span>
-  );
-}
+/* =========================================================
+   ROW
+========================================================= */
 
 function NotificationRow({
   item,
   canManage,
+  isAdmin,
   onView,
   onEdit,
   onDelete,
+  onApprove,
+  onReject,
 }: {
   item: ThongBao;
+
   canManage: boolean;
+  isAdmin: boolean;
+
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onApprove: () => void;
+  onReject: () => void;
 }) {
   return (
     <div
-      className={`grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[52px_1fr_150px_170px_auto] lg:items-center ${
-        !item.daDoc && !canManage
-          ? "bg-blue-50/40"
+      className={`p-4 transition hover:bg-slate-50 sm:p-5 ${
+        !item.daDoc &&
+        !canManage
+          ? "bg-blue-50/30"
           : ""
       }`}
     >
-      <div
-        className={`grid h-11 w-11 place-items-center rounded-xl ${
-          item.mucDo === "KHAN_CAP"
-            ? "bg-red-50 text-red-600"
-            : "bg-blue-50 text-blue-700"
-        }`}
-      >
-        <Bell size={20} />
-      </div>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <NotificationBadge
+              item={item}
+            />
 
-      <button
-        type="button"
-        onClick={onView}
-        className="min-w-0 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <h3
-            className={`truncate text-[15px] text-slate-900 ${
-              !item.daDoc
-                ? "font-bold"
-                : "font-semibold"
-            }`}
-          >
-            {item.tieuDe}
-          </h3>
+            {canManage && (
+              <StatusBadge
+                status={
+                  item.trangThai
+                }
+              />
+            )}
 
-          {!item.daDoc && !canManage && (
-            <span className="h-2 w-2 shrink-0 rounded-full bg-blue-600" />
-          )}
-        </div>
-
-        <p className="mt-1 line-clamp-1 text-sm text-slate-500">
-          {item.noiDung}
-        </p>
-
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-400">
-          <span>
-            {LOAI_LABEL[item.loaiThongBao]}
-          </span>
-
-          {item.tepDinhKem.length >
-            0 && (
-            <span className="flex items-center gap-1">
-              <Paperclip size={13} />
-              {item.tepDinhKem.length} tệp
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+              {
+                LOAI_LABEL[
+                  item.loaiThongBao
+                ]
+              }
             </span>
-          )}
-        </div>
-      </button>
 
-      <div>
-        <NotificationBadge item={item} />
-      </div>
+            {!item.daDoc &&
+              !canManage && (
+              <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-bold text-white">
+                Mới
+              </span>
+            )}
+          </div>
 
-      <div className="text-sm text-slate-500">
-        <p>{formatDate(item.createdAt)}</p>
+          <button
+            type="button"
+            onClick={
+              onView
+            }
+            className="mt-3 block max-w-full text-left"
+          >
+            <h3 className="line-clamp-2 text-base font-bold text-slate-900 hover:text-blue-700">
+              {item.tieuDe}
+            </h3>
+          </button>
 
-        {canManage && (
-          <p className="mt-1 text-xs">
-            {item.soLuotXem ?? 0} lượt xem
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">
+            {item.noiDung}
           </p>
-        )}
-      </div>
 
-      <div className="flex justify-end gap-2">
-        <ActionButton
-          title="Xem thông báo"
-          onClick={onView}
-        >
-          <Eye size={18} />
-        </ActionButton>
+          {item.trangThai ===
+            "TU_CHOI" &&
+            item.lyDoTuChoi && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-xs font-bold uppercase text-red-700">
+                Lý do từ chối
+              </p>
 
-        {canManage && (
-          <>
-            <ActionButton
-              title="Sửa thông báo"
-              onClick={onEdit}
-              className="text-blue-700"
-            >
-              <Pencil size={18} />
-            </ActionButton>
+              <p className="mt-1 text-sm text-red-700">
+                {
+                  item.lyDoTuChoi
+                }
+              </p>
+            </div>
+          )}
 
-            <ActionButton
-              title="Xóa thông báo"
-              onClick={onDelete}
-              className="border-red-200 text-red-600"
-            >
-              <Trash2 size={18} />
-            </ActionButton>
-          </>
-        )}
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+            <span>
+              {formatDate(
+                item.createdAt,
+              )}
+            </span>
+
+            {item.maThongBao && (
+              <span>
+                Mã:{" "}
+                <strong>
+                  {
+                    item.maThongBao
+                  }
+                </strong>
+              </span>
+            )}
+
+            {item.nguoiTao
+              ?.fullName && (
+              <span>
+                Người tạo:{" "}
+                {
+                  item.nguoiTao
+                    .fullName
+                }
+              </span>
+            )}
+
+            {item.tepDinhKem
+              .length >
+              0 && (
+              <span className="inline-flex items-center gap-1">
+                <Paperclip
+                  size={13}
+                />
+
+                {
+                  item.tepDinhKem
+                    .length
+                }{" "}
+                tệp
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <ActionButton
+            title="Xem"
+            icon={
+              <Eye
+                size={17}
+              />
+            }
+            onClick={
+              onView
+            }
+          />
+
+          {isAdmin &&
+            item.trangThai ===
+              "CHO_DUYET" && (
+              <>
+                <button
+                  type="button"
+                  onClick={
+                    onApprove
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700"
+                >
+                  <Check
+                    size={16}
+                  />
+
+                  Duyệt
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    onReject
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-600 hover:bg-red-50"
+                >
+                  <X
+                    size={16}
+                  />
+
+                  Từ chối
+                </button>
+              </>
+            )}
+
+          {canManage &&
+            (
+              isAdmin ||
+              [
+                "NHAP",
+                "TU_CHOI",
+              ].includes(
+                item.trangThai,
+              )
+            ) && (
+              <ActionButton
+                title="Sửa"
+                icon={
+                  <Pencil
+                    size={17}
+                  />
+                }
+                onClick={
+                  onEdit
+                }
+              />
+            )}
+
+          {canManage &&
+            item.trangThai !==
+              "CHO_DUYET" && (
+              <ActionButton
+                title="Xóa"
+                danger
+                icon={
+                  <Trash2
+                    size={17}
+                  />
+                }
+                onClick={
+                  onDelete
+                }
+              />
+            )}
+        </div>
       </div>
     </div>
   );
 }
 
-function ActionButton({
-  title,
-  onClick,
-  children,
-  className = "",
-}: {
-  title: string;
-  onClick: () => void;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={`grid h-[38px] w-[38px] place-items-center rounded-lg border border-slate-300 bg-white transition hover:bg-slate-50 ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
+/* =========================================================
+   FORM MODAL
+========================================================= */
 
 function ThongBaoFormModal({
   open,
   initialData,
+  saving,
+  userRole,
   chiHoiList,
   nguoiDungList,
-  saving,
   onClose,
   onSubmit,
 }: {
   open: boolean;
   initialData: ThongBao | null;
+  saving: boolean;
+  userRole: UserRole;
   chiHoiList: ChiHoiOption[];
   nguoiDungList: NguoiDungOption[];
-  saving: boolean;
   onClose: () => void;
   onSubmit: (
-    form: ThongBaoFormData,
+    form:
+      ThongBaoFormData,
   ) => Promise<void>;
 }) {
   const fileInputRef =
-    useRef<HTMLInputElement>(null);
+    useRef<HTMLInputElement | null>(
+      null,
+    );
 
-  const [form, setForm] =
+  const [
+    form,
+    setForm,
+  ] =
     useState<ThongBaoFormData>({
       ...EMPTY_FORM,
     });
 
-  const [uploading, setUploading] =
-    useState(false);
-
-  const [localError, setLocalError] =
+  const [
+    localError,
+    setLocalError,
+  ] =
     useState("");
 
-  useEffect(() => {
-    if (!open) return;
+  const [
+    uploading,
+    setUploading,
+  ] =
+    useState(false);
 
-    if (initialData) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset editable modal state when the selected record or open state changes.
-      setForm({
-        tieuDe: initialData.tieuDe,
+  const isAdmin =
+    userRole ===
+    "ADMIN";
 
-        noiDung: initialData.noiDung,
+  const disabled =
+    saving ||
+    uploading;
 
-        loaiThongBao:
-          initialData.loaiThongBao,
-
-        mucDo: initialData.mucDo,
-
-        phamVi: initialData.phamVi,
-
-        chiHoiIds:
-          initialData.chiHoiIds,
-
-        vaiTroNguoiNhan:
-          initialData.vaiTroNguoiNhan,
-
-        nguoiNhanIds:
-          initialData.nguoiNhanIds,
-
-        tepDinhKem:
-          initialData.tepDinhKem,
-
-        ngayBatDau: toDateTimeLocal(
-          initialData.ngayBatDau,
-        ),
-
-        ngayKetThuc: toDateTimeLocal(
-          initialData.ngayKetThuc,
-        ),
-
-        trangThai:
-          initialData.trangThai,
-      });
-    } else {
-      setForm({
-        ...EMPTY_FORM,
-        chiHoiIds: [],
-        vaiTroNguoiNhan: [],
-        nguoiNhanIds: [],
-        tepDinhKem: [],
-      });
-    }
-
-    setLocalError("");
-    setUploading(false);
-  }, [open, initialData]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const handleKeyDown = (
-      event: KeyboardEvent,
-    ) => {
-      if (
-        event.key === "Escape" &&
-        !saving &&
-        !uploading
-      ) {
-        onClose();
+  useEffect(
+    () => {
+      if (!open) {
+        return;
       }
-    };
 
-    window.addEventListener(
-      "keydown",
-      handleKeyDown,
-    );
+      if (initialData) {
+        let editStatus =
+          initialData.trangThai;
 
-    return () => {
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown,
-      );
-    };
-  }, [open, saving, uploading, onClose]);
+        if (
+          !isAdmin &&
+          editStatus ===
+            "TU_CHOI"
+        ) {
+          editStatus =
+            "DA_DANG";
+        }
 
-  if (!open) return null;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Preserve existing loading and UI synchronization timing in this effect.
+        setForm({
+          tieuDe:
+            initialData.tieuDe,
 
-  const setField = <
-    K extends keyof ThongBaoFormData,
+          noiDung:
+            initialData.noiDung,
+
+          loaiThongBao:
+            initialData.loaiThongBao,
+
+          mucDo:
+            initialData.mucDo,
+
+          phamVi:
+            initialData.phamVi,
+
+          chiHoiIds:
+            [
+              ...initialData.chiHoiIds,
+            ],
+
+          vaiTroNguoiNhan:
+            [
+              ...initialData.vaiTroNguoiNhan,
+            ],
+
+          nguoiNhanIds:
+            [
+              ...initialData.nguoiNhanIds,
+            ],
+
+          tepDinhKem:
+            [
+              ...initialData.tepDinhKem,
+            ],
+
+          ngayBatDau:
+            toDateTimeLocal(
+              initialData.ngayBatDau,
+            ),
+
+          ngayKetThuc:
+            toDateTimeLocal(
+              initialData.ngayKetThuc,
+            ),
+
+          trangThai:
+            editStatus,
+        });
+      } else {
+        setForm({
+          ...EMPTY_FORM,
+
+          chiHoiIds: [],
+          vaiTroNguoiNhan: [],
+          nguoiNhanIds: [],
+          tepDinhKem: [],
+        });
+      }
+
+      setLocalError("");
+      setUploading(false);
+    },
+    [
+      open,
+      initialData,
+      isAdmin,
+    ],
+  );
+
+  if (!open) {
+    return null;
+  }
+
+  function setField<
+    K extends
+      keyof ThongBaoFormData
   >(
     field: K,
-    value: ThongBaoFormData[K],
-  ) => {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    value:
+      ThongBaoFormData[K],
+  ) {
+    setForm(
+      (
+        current,
+      ) => ({
+        ...current,
 
-    setLocalError("");
-  };
-
-  const toggleValue = <T extends string>(
-    values: T[],
-    value: T,
-  ) => {
-    if (values.includes(value)) {
-      return values.filter(
-        (item) => item !== value,
-      );
-    }
-
-    return [...values, value];
-  };
-
-  const handleScopeChange = (
-    value: PhamViThongBao,
-  ) => {
-    setForm((current) => ({
-      ...current,
-
-      phamVi: value,
-
-      chiHoiIds:
-        value === "CHI_HOI"
-          ? current.chiHoiIds
-          : [],
-
-      vaiTroNguoiNhan:
-        value === "VAI_TRO"
-          ? current.vaiTroNguoiNhan
-          : [],
-
-      nguoiNhanIds:
-        value === "CA_NHAN"
-          ? current.nguoiNhanIds
-          : [],
-    }));
-
-    setLocalError("");
-  };
-
-  const handleChooseFiles = async (
-    event: ChangeEvent<HTMLInputElement>,
-  ) => {
-    const selectedFiles = Array.from(
-      event.target.files ?? [],
+        [field]:
+          value,
+      }),
     );
 
-    event.target.value = "";
+    setLocalError("");
+  }
 
-    if (selectedFiles.length === 0) {
-      return;
-    }
+  function toggleValue<
+    T extends string
+  >(
+    values: T[],
+    value: T,
+  ) {
+    return values.includes(
+      value,
+    )
+      ? values.filter(
+          (
+            item,
+          ) =>
+            item !==
+            value,
+        )
+      : [
+          ...values,
+          value,
+        ];
+  }
 
-    const remainingFiles =
-      MAX_FILES -
-      form.tepDinhKem.length;
+  function handleScopeChange(
+    value:
+      PhamViThongBao,
+  ) {
+    setForm(
+      (
+        current,
+      ) => ({
+        ...current,
 
-    if (remainingFiles <= 0) {
-      setLocalError(
-        `Chỉ được đính kèm tối đa ${MAX_FILES} tệp`,
+        phamVi:
+          value,
+
+        chiHoiIds:
+          value ===
+          "CHI_HOI"
+            ? current.chiHoiIds
+            : [],
+
+        vaiTroNguoiNhan:
+          value ===
+          "VAI_TRO"
+            ? current.vaiTroNguoiNhan
+            : [],
+
+        nguoiNhanIds:
+          value ===
+          "CA_NHAN"
+            ? current.nguoiNhanIds
+            : [],
+      }),
+    );
+  }
+
+  async function handleChooseFiles(
+    event:
+      ChangeEvent<HTMLInputElement>,
+  ) {
+    const selectedFiles =
+      Array.from(
+        event.target.files ??
+          [],
       );
 
+    event.target.value =
+      "";
+
+    if (
+      selectedFiles.length ===
+      0
+    ) {
       return;
     }
+
+    const remaining =
+      MAX_FILES -
+      form.tepDinhKem
+        .length;
 
     if (
       selectedFiles.length >
-      remainingFiles
+      remaining
     ) {
       setLocalError(
-        `Bạn chỉ có thể chọn thêm ${remainingFiles} tệp`,
+        `Bạn chỉ có thể chọn thêm ${remaining} tệp`,
       );
 
       return;
     }
 
-    const oversizedFile =
+    const oversized =
       selectedFiles.find(
-        (file) =>
-          file.size > MAX_FILE_SIZE,
+        (
+          file,
+        ) =>
+          file.size >
+          MAX_FILE_SIZE,
       );
 
-    if (oversizedFile) {
+    if (oversized) {
       setLocalError(
-        `Tệp “${oversizedFile.name}” vượt quá dung lượng 10 MB`,
+        `Tệp “${oversized.name}” vượt quá 10 MB`,
       );
 
       return;
@@ -1810,26 +3595,43 @@ function ThongBaoFormModal({
 
     try {
       const uploadData =
-        new globalThis.FormData();
+        new FormData();
 
-      selectedFiles.forEach((file) => {
-        uploadData.append("files", file);
-      });
-
-      const response = await fetch(
-        "/api/thong-bao/upload",
-        {
-          method: "POST",
-          body: uploadData,
+      selectedFiles.forEach(
+        (
+          file,
+        ) => {
+          uploadData.append(
+            "files",
+            file,
+          );
         },
       );
 
+      const response =
+        await fetch(
+          "/api/thong-bao/upload",
+          {
+            method:
+              "POST",
+
+            credentials:
+              "include",
+
+            body:
+              uploadData,
+          },
+        );
+
       const result =
-        await parseResponse(response);
+        await parseResponse(
+          response,
+        );
 
       if (
         !response.ok ||
-        result.success === false
+        result.success ===
+          false
       ) {
         throw new Error(
           result.message ||
@@ -1838,63 +3640,86 @@ function ThongBaoFormModal({
       }
 
       const uploadedFiles =
-        result?.data?.files ??
+        result?.data
+          ?.files ??
         result?.files ??
         result?.data ??
         [];
 
       if (
-        !Array.isArray(uploadedFiles) ||
-        uploadedFiles.length === 0
+        !Array.isArray(
+          uploadedFiles,
+        )
       ) {
         throw new Error(
-          "Máy chủ không trả về thông tin tệp đã tải lên",
+          "Dữ liệu tệp tải lên không hợp lệ",
         );
       }
 
-      setForm((current) => ({
-        ...current,
+      setForm(
+        (
+          current,
+        ) => ({
+          ...current,
 
-        tepDinhKem: [
-          ...current.tepDinhKem,
-          ...uploadedFiles,
-        ].slice(0, MAX_FILES),
-      }));
-    } catch (uploadError) {
+          tepDinhKem:
+            [
+              ...current
+                .tepDinhKem,
+
+              ...uploadedFiles,
+            ].slice(
+              0,
+              MAX_FILES,
+            ),
+        }),
+      );
+    } catch (
+      uploadError
+    ) {
       setLocalError(
-        uploadError instanceof Error
+        uploadError instanceof
+          Error
           ? uploadError.message
           : "Không thể tải tài liệu lên",
       );
     } finally {
       setUploading(false);
     }
-  };
+  }
 
-  const removeAttachment = (
-    attachmentIndex: number,
-  ) => {
-    if (saving || uploading) return;
+  function removeAttachment(
+    index:
+      number,
+  ) {
+    setForm(
+      (
+        current,
+      ) => ({
+        ...current,
 
-    setForm((current) => ({
-      ...current,
+        tepDinhKem:
+          current.tepDinhKem.filter(
+            (
+              _,
+              itemIndex,
+            ) =>
+              itemIndex !==
+              index,
+          ),
+      }),
+    );
+  }
 
-      tepDinhKem:
-        current.tepDinhKem.filter(
-          (_, index) =>
-            index !== attachmentIndex,
-        ),
-    }));
-
-    setLocalError("");
-  };
-
-  const handleSubmit = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
+  async function handleSubmit(
+    event:
+      FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
-    if (!form.tieuDe.trim()) {
+    if (
+      !form.tieuDe.trim()
+    ) {
       setLocalError(
         "Vui lòng nhập tiêu đề thông báo",
       );
@@ -1902,7 +3727,9 @@ function ThongBaoFormModal({
       return;
     }
 
-    if (!form.noiDung.trim()) {
+    if (
+      !form.noiDung.trim()
+    ) {
       setLocalError(
         "Vui lòng nhập nội dung thông báo",
       );
@@ -1911,8 +3738,11 @@ function ThongBaoFormModal({
     }
 
     if (
-      form.phamVi === "CHI_HOI" &&
-      form.chiHoiIds.length === 0
+      form.phamVi ===
+        "CHI_HOI" &&
+      form.chiHoiIds
+        .length ===
+        0
     ) {
       setLocalError(
         "Vui lòng chọn ít nhất một Chi hội",
@@ -1922,8 +3752,11 @@ function ThongBaoFormModal({
     }
 
     if (
-      form.phamVi === "VAI_TRO" &&
-      form.vaiTroNguoiNhan.length === 0
+      form.phamVi ===
+        "VAI_TRO" &&
+      form.vaiTroNguoiNhan
+        .length ===
+        0
     ) {
       setLocalError(
         "Vui lòng chọn ít nhất một vai trò",
@@ -1933,8 +3766,11 @@ function ThongBaoFormModal({
     }
 
     if (
-      form.phamVi === "CA_NHAN" &&
-      form.nguoiNhanIds.length === 0
+      form.phamVi ===
+        "CA_NHAN" &&
+      form.nguoiNhanIds
+        .length ===
+        0
     ) {
       setLocalError(
         "Vui lòng chọn ít nhất một người nhận",
@@ -1946,8 +3782,12 @@ function ThongBaoFormModal({
     if (
       form.ngayBatDau &&
       form.ngayKetThuc &&
-      new Date(form.ngayKetThuc) <=
-        new Date(form.ngayBatDau)
+      new Date(
+        form.ngayKetThuc,
+      ) <=
+        new Date(
+          form.ngayBatDau,
+        )
     ) {
       setLocalError(
         "Thời gian kết thúc phải sau thời gian bắt đầu",
@@ -1956,156 +3796,177 @@ function ThongBaoFormModal({
       return;
     }
 
-    if (uploading) {
-      setLocalError(
-        "Vui lòng chờ tải tài liệu hoàn tất",
-      );
+    await onSubmit({
+      ...form,
 
-      return;
-    }
+      tieuDe:
+        form.tieuDe.trim(),
 
-    try {
-      await onSubmit({
-        ...form,
-        tieuDe: form.tieuDe.trim(),
-        noiDung: form.noiDung.trim(),
-      });
-    } catch (submitError) {
-      setLocalError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Không thể lưu thông báo",
-      );
-    }
-  };
-
-  const disabled =
-    saving || uploading;
+      noiDung:
+        form.noiDung.trim(),
+    });
+  }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3"
-      onMouseDown={(event) => {
-        if (
-          event.target ===
-            event.currentTarget &&
-          !disabled
-        ) {
-          onClose();
-        }
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3">
       <div className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-          <div className="flex items-start gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700">
-              <Bell size={22} />
-            </div>
 
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                {initialData
-                  ? "Cập nhật thông báo"
-                  : "Tạo thông báo"}
-              </h2>
+        <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="text-xl font-bold text-slate-950">
+              {initialData
+                ? "Cập nhật thông báo"
+                : "Tạo thông báo"}
+            </h2>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Nhập nội dung, chọn người nhận
-                và tài liệu đính kèm.
-              </p>
-            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              {isAdmin
+                ? "Quản trị viên có thể phát hành trực tiếp."
+                : "Thông báo phát hành sẽ được gửi Quản trị viên phê duyệt."}
+            </p>
           </div>
 
           <button
             type="button"
-            disabled={disabled}
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+            disabled={
+              disabled
+            }
+            onClick={
+              onClose
+            }
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
           >
-            <X size={21} />
+            <X />
           </button>
         </div>
 
         <form
-          onSubmit={handleSubmit}
+          onSubmit={
+            handleSubmit
+          }
           className="flex min-h-0 flex-1 flex-col"
         >
-          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+          <div className="flex-1 space-y-6 overflow-y-auto p-5">
+
             {localError && (
-              <Notice
+              <AlertBox
                 type="error"
-                text={localError}
+                message={
+                  localError
+                }
                 onClose={() =>
-                  setLocalError("")
+                  setLocalError(
+                    "",
+                  )
                 }
               />
             )}
 
+            {initialData
+              ?.trangThai ===
+              "TU_CHOI" &&
+              initialData.lyDoTuChoi && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                <p className="font-bold text-red-800">
+                  Lý do bị từ chối
+                </p>
+
+                <p className="mt-2 text-sm text-red-700">
+                  {
+                    initialData
+                      .lyDoTuChoi
+                  }
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <FormField
-                label="Tiêu đề thông báo"
+                label="Tiêu đề"
                 required
                 wide
               >
                 <input
-                  value={form.tieuDe}
-                  onChange={(event) =>
+                  value={
+                    form.tieuDe
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setField(
                       "tieuDe",
-                      event.target.value,
+                      event.target
+                        .value,
                     )
                   }
-                  maxLength={250}
-                  disabled={saving}
-                  placeholder="Nhập tiêu đề thông báo"
+                  disabled={
+                    disabled
+                  }
+                  maxLength={
+                    250
+                  }
                   className="notification-control"
                 />
               </FormField>
 
               <FormField label="Loại thông báo">
                 <select
-                  value={form.loaiThongBao}
-                  onChange={(event) =>
+                  value={
+                    form.loaiThongBao
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setField(
                       "loaiThongBao",
-
                       event.target
-                        .value as LoaiThongBao,
+                        .value as
+                        LoaiThongBao,
                     )
                   }
-                  disabled={saving}
                   className="notification-control"
                 >
-                  <option value="THONG_BAO_CHUNG">
-                    Thông báo chung
-                  </option>
-
-                  <option value="HOAT_DONG">
-                    Thông báo hoạt động
-                  </option>
-
-                  <option value="TAI_LIEU">
-                    Tài liệu
-                  </option>
-
-                  <option value="KHAC">
-                    Thông báo khác
-                  </option>
+                  {Object.entries(
+                    LOAI_LABEL,
+                  ).map(
+                    (
+                      [
+                        value,
+                        label,
+                      ],
+                    ) => (
+                      <option
+                        key={
+                          value
+                        }
+                        value={
+                          value
+                        }
+                      >
+                        {
+                          label
+                        }
+                      </option>
+                    ),
+                  )}
                 </select>
               </FormField>
 
               <FormField label="Mức độ">
                 <select
-                  value={form.mucDo}
-                  onChange={(event) =>
+                  value={
+                    form.mucDo
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setField(
                       "mucDo",
-
                       event.target
-                        .value as MucDoThongBao,
+                        .value as
+                        MucDoThongBao,
                     )
                   }
-                  disabled={saving}
                   className="notification-control"
                 >
                   <option value="THONG_THUONG">
@@ -2128,68 +3989,90 @@ function ThongBaoFormModal({
                 wide
               >
                 <textarea
-                  value={form.noiDung}
-                  onChange={(event) =>
+                  value={
+                    form.noiDung
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setField(
                       "noiDung",
-                      event.target.value,
+                      event.target
+                        .value,
                     )
                   }
-                  rows={7}
-                  disabled={saving}
-                  placeholder="Nhập nội dung thông báo"
-                  className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                  rows={
+                    7
+                  }
+                  disabled={
+                    disabled
+                  }
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none"
                 />
               </FormField>
             </div>
 
+            {/* PHẠM VI */}
+
             <section>
-              <h3 className="mb-3 text-sm font-semibold text-slate-800">
+              <h3 className="mb-3 text-sm font-bold text-slate-800">
                 Phạm vi nhận thông báo
               </h3>
 
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <ScopeButton
                   selected={
-                    form.phamVi === "TAT_CA"
+                    form.phamVi ===
+                    "TAT_CA"
                   }
                   label="Tất cả"
-                  description="Gửi toàn hệ thống"
+                  description="Toàn hệ thống"
                   onClick={() =>
-                    handleScopeChange("TAT_CA")
+                    handleScopeChange(
+                      "TAT_CA",
+                    )
                   }
                 />
 
                 <ScopeButton
                   selected={
-                    form.phamVi === "CHI_HOI"
+                    form.phamVi ===
+                    "CHI_HOI"
                   }
-                  label="Theo Chi hội"
-                  description="Chọn một hoặc nhiều Chi hội"
+                  label="Chi hội"
+                  description="Theo Chi hội"
                   onClick={() =>
-                    handleScopeChange("CHI_HOI")
+                    handleScopeChange(
+                      "CHI_HOI",
+                    )
                   }
                 />
 
                 <ScopeButton
                   selected={
-                    form.phamVi === "VAI_TRO"
+                    form.phamVi ===
+                    "VAI_TRO"
                   }
-                  label="Theo vai trò"
-                  description="Chọn nhóm quyền nhận"
+                  label="Vai trò"
+                  description="Theo quyền"
                   onClick={() =>
-                    handleScopeChange("VAI_TRO")
+                    handleScopeChange(
+                      "VAI_TRO",
+                    )
                   }
                 />
 
                 <ScopeButton
                   selected={
-                    form.phamVi === "CA_NHAN"
+                    form.phamVi ===
+                    "CA_NHAN"
                   }
                   label="Cá nhân"
-                  description="Chọn người nhận cụ thể"
+                  description="Người cụ thể"
                   onClick={() =>
-                    handleScopeChange("CA_NHAN")
+                    handleScopeChange(
+                      "CA_NHAN",
+                    )
                   }
                 />
               </div>
@@ -2197,33 +4080,30 @@ function ThongBaoFormModal({
               {form.phamVi ===
                 "CHI_HOI" && (
                 <ChoiceBox>
-                  {chiHoiList.length ===
-                  0 ? (
-                    <p className="col-span-2 text-sm text-slate-500">
-                      Chưa có dữ liệu Chi hội.
-                    </p>
-                  ) : (
-                    chiHoiList.map(
-                      (chiHoi) => (
-                        <CheckOption
-                          key={chiHoi.id}
-                          checked={form.chiHoiIds.includes(
-                            chiHoi.id,
-                          )}
-                          label={`${chiHoi.maChiHoi} - ${chiHoi.tenChiHoi}`}
-                          onChange={() =>
-                            setField(
-                              "chiHoiIds",
+                  {chiHoiList.map(
+                    (
+                      item,
+                    ) => (
+                      <CheckOption
+                        key={
+                          item.id
+                        }
+                        checked={form.chiHoiIds.includes(
+                          item.id,
+                        )}
+                        label={`${item.maChiHoi} - ${item.tenChiHoi}`}
+                        onChange={() =>
+                          setField(
+                            "chiHoiIds",
 
-                              toggleValue(
-                                form.chiHoiIds,
-                                chiHoi.id,
-                              ),
-                            )
-                          }
-                        />
-                      ),
-                    )
+                            toggleValue(
+                              form.chiHoiIds,
+                              item.id,
+                            ),
+                          )
+                        }
+                      />
+                    ),
                   )}
                 </ChoiceBox>
               )}
@@ -2234,156 +4114,195 @@ function ThongBaoFormModal({
                   {(
                     Object.keys(
                       ROLE_LABEL,
-                    ) as UserRole[]
-                  ).map((role) => (
-                    <CheckOption
-                      key={role}
-                      checked={form.vaiTroNguoiNhan.includes(
-                        role,
-                      )}
-                      label={
-                        ROLE_LABEL[role]
-                      }
-                      onChange={() =>
-                        setField(
-                          "vaiTroNguoiNhan",
+                    ) as
+                      UserRole[]
+                  ).map(
+                    (
+                      role,
+                    ) => (
+                      <CheckOption
+                        key={
+                          role
+                        }
+                        checked={form.vaiTroNguoiNhan.includes(
+                          role,
+                        )}
+                        label={
+                          ROLE_LABEL[
+                            role
+                          ]
+                        }
+                        onChange={() =>
+                          setField(
+                            "vaiTroNguoiNhan",
 
-                          toggleValue(
-                            form.vaiTroNguoiNhan,
-                            role,
-                          ),
-                        )
-                      }
-                    />
-                  ))}
+                            toggleValue(
+                              form.vaiTroNguoiNhan,
+                              role,
+                            ),
+                          )
+                        }
+                      />
+                    ),
+                  )}
                 </ChoiceBox>
               )}
 
               {form.phamVi ===
                 "CA_NHAN" && (
                 <ChoiceBox>
-                  {nguoiDungList.length ===
-                  0 ? (
-                    <p className="col-span-2 text-sm text-slate-500">
-                      Chưa có dữ liệu người
-                      dùng.
-                    </p>
-                  ) : (
-                    nguoiDungList.map(
-                      (user) => (
-                        <CheckOption
-                          key={user.id}
-                          checked={form.nguoiNhanIds.includes(
-                            user.id,
-                          )}
-                          label={`${user.fullName} (${user.username})`}
-                          onChange={() =>
-                            setField(
-                              "nguoiNhanIds",
+                  {nguoiDungList.map(
+                    (
+                      user,
+                    ) => (
+                      <CheckOption
+                        key={
+                          user.id
+                        }
+                        checked={form.nguoiNhanIds.includes(
+                          user.id,
+                        )}
+                        label={`${user.fullName} (${user.username})`}
+                        onChange={() =>
+                          setField(
+                            "nguoiNhanIds",
 
-                              toggleValue(
-                                form.nguoiNhanIds,
-                                user.id,
-                              ),
-                            )
-                          }
-                        />
-                      ),
-                    )
+                            toggleValue(
+                              form.nguoiNhanIds,
+                              user.id,
+                            ),
+                          )
+                        }
+                      />
+                    ),
                   )}
                 </ChoiceBox>
               )}
             </section>
 
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-              <FormField label="Bắt đầu hiển thị">
+            {/* DATE */}
+
+            <div className="grid gap-5 md:grid-cols-3">
+              <FormField label="Bắt đầu">
                 <input
                   type="datetime-local"
-                  value={form.ngayBatDau}
-                  onChange={(event) =>
+                  value={
+                    form.ngayBatDau
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setField(
                       "ngayBatDau",
-                      event.target.value,
+                      event.target
+                        .value,
                     )
                   }
-                  disabled={saving}
                   className="notification-control"
                 />
               </FormField>
 
-              <FormField label="Kết thúc hiển thị">
+              <FormField label="Kết thúc">
                 <input
                   type="datetime-local"
-                  value={form.ngayKetThuc}
-                  min={
-                    form.ngayBatDau ||
-                    undefined
+                  value={
+                    form.ngayKetThuc
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     setField(
                       "ngayKetThuc",
-                      event.target.value,
+                      event.target
+                        .value,
                     )
                   }
-                  disabled={saving}
                   className="notification-control"
                 />
               </FormField>
 
-              <FormField label="Trạng thái">
+              <FormField label="Hành động">
                 <select
-                  value={form.trangThai}
-                  onChange={(event) =>
+                  value={
+                    form.trangThai
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setField(
                       "trangThai",
-
                       event.target
-                        .value as TrangThaiThongBao,
+                        .value as
+                        TrangThaiThongBao,
                     )
                   }
-                  disabled={saving}
                   className="notification-control"
                 >
-                  <option value="DA_DANG">
-                    Đăng thông báo
-                  </option>
+                  {isAdmin ? (
+                    <>
+                      <option value="DA_DANG">
+                        Phát hành
+                      </option>
 
-                  <option value="NHAP">
-                    Lưu bản nháp
-                  </option>
+                      <option value="NHAP">
+                        Lưu nháp
+                      </option>
 
-                  <option value="DA_AN">
-                    Ẩn thông báo
-                  </option>
+                      <option value="DA_AN">
+                        Lưu đã ẩn
+                      </option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="DA_DANG">
+                        Gửi duyệt
+                      </option>
+
+                      <option value="NHAP">
+                        Lưu nháp
+                      </option>
+                    </>
+                  )}
                 </select>
               </FormField>
             </div>
 
+            {/* FILE */}
+
             <section>
-              <div className="mb-3 flex items-end justify-between gap-3">
+              <div className="mb-3 flex justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-slate-800">
-                    Tài liệu đính kèm
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Tệp đính kèm
                   </h3>
 
                   <p className="mt-1 text-xs text-slate-500">
-                    Tối đa 5 tệp, mỗi tệp
-                    không vượt quá 10 MB.
+                    Tối đa 5 tệp, mỗi tệp tối đa 10 MB.
                   </p>
                 </div>
 
-                <span className="text-xs font-medium text-slate-500">
-                  {form.tepDinhKem.length}/
-                  {MAX_FILES}
+                <span className="text-xs text-slate-500">
+                  {
+                    form
+                      .tepDinhKem
+                      .length
+                  }
+                  /5
                 </span>
               </div>
 
               <input
-                ref={fileInputRef}
+                ref={
+                  fileInputRef
+                }
                 type="file"
                 multiple
-                accept={ACCEPTED_FILE_TYPES}
-                onChange={handleChooseFiles}
+                accept={
+                  ACCEPTED_FILE_TYPES
+                }
+                onChange={
+                  handleChooseFiles
+                }
                 className="hidden"
               />
 
@@ -2391,89 +4310,75 @@ function ThongBaoFormModal({
                 type="button"
                 disabled={
                   disabled ||
-                  form.tepDinhKem.length >=
+                  form
+                    .tepDinhKem
+                    .length >=
                     MAX_FILES
                 }
                 onClick={() =>
                   fileInputRef.current?.click()
                 }
-                className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-5 py-7 text-center transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 py-7"
               >
                 {uploading ? (
-                  <>
-                    <Loader2
-                      size={28}
-                      className="animate-spin text-blue-700"
-                    />
-
-                    <span className="mt-3 text-sm font-semibold text-blue-700">
-                      Đang tải tài liệu...
-                    </span>
-                  </>
+                  <Loader2
+                    size={28}
+                    className="animate-spin text-blue-700"
+                  />
                 ) : (
-                  <>
-                    <div className="grid h-11 w-11 place-items-center rounded-full bg-blue-100 text-blue-700">
-                      <Upload size={21} />
-                    </div>
-
-                    <span className="mt-3 text-sm font-semibold text-slate-800">
-                      Nhấn vào đây để chọn tài
-                      liệu
-                    </span>
-
-                    <span className="mt-1 text-xs text-slate-500">
-                      Không cần nhập tên tệp
-                      hoặc đường dẫn thủ công
-                    </span>
-                  </>
+                  <Upload
+                    size={28}
+                    className="text-blue-700"
+                  />
                 )}
+
+                <span className="mt-2 text-sm font-semibold">
+                  {uploading
+                    ? "Đang tải..."
+                    : "Chọn tài liệu"}
+                </span>
               </button>
 
-              {form.tepDinhKem.length >
+              {form
+                .tepDinhKem
+                .length >
                 0 && (
                 <div className="mt-4 space-y-2">
                   {form.tepDinhKem.map(
-                    (file, index) => (
+                    (
+                      file,
+                      index,
+                    ) => (
                       <div
                         key={`${file.duongDan}-${index}`}
-                        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3"
+                        className="flex items-center gap-3 rounded-xl border p-3"
                       >
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
-                          <FileText
-                            size={20}
-                          />
-                        </div>
+                        <FileText
+                          className="text-blue-700"
+                        />
 
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-slate-800">
-                            {file.tenTep}
+                          <p className="truncate text-sm font-semibold">
+                            {
+                              file.tenTep
+                            }
                           </p>
 
-                          <p className="mt-0.5 text-xs text-slate-500">
+                          <p className="text-xs text-slate-500">
                             {formatFileSize(
                               file.kichThuoc,
                             )}
                           </p>
                         </div>
 
-                        <a
-                          href={file.duongDan}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="rounded-lg px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
-                        >
-                          Xem
-                        </a>
-
                         <button
                           type="button"
-                          disabled={disabled}
                           onClick={() =>
                             removeAttachment(
                               index,
                             )
                           }
-                          className="rounded-lg border border-red-200 p-2 text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                          className="rounded-lg p-2 text-red-600 hover:bg-red-50"
                         >
                           <Trash2
                             size={17}
@@ -2487,52 +4392,43 @@ function ThongBaoFormModal({
             </section>
           </div>
 
-          <div className="flex items-center justify-between gap-4 border-t border-slate-200 bg-white px-6 py-4">
-            <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex">
-              <Paperclip size={15} />
+          <div className="flex justify-end gap-3 border-t p-4">
+            <button
+              type="button"
+              onClick={
+                onClose
+              }
+              className="notification-secondary-button"
+            >
+              Hủy
+            </button>
 
-              <span>
-                {form.tepDinhKem.length > 0
-                  ? `Đã đính kèm ${form.tepDinhKem.length} tệp`
-                  : "Chưa có tài liệu đính kèm"}
-              </span>
-            </div>
+            <button
+              type="submit"
+              disabled={
+                disabled
+              }
+              className="notification-primary-button"
+            >
+              {saving ? (
+                <Loader2
+                  size={17}
+                  className="animate-spin"
+                />
+              ) : (
+                <Send
+                  size={17}
+                />
+              )}
 
-            <div className="ml-auto flex items-center gap-3">
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={onClose}
-                className="notification-secondary-button"
-              >
-                Đóng
-              </button>
-
-              <button
-                type="submit"
-                disabled={disabled}
-                className="notification-primary-button min-w-36 justify-center"
-              >
-                {saving ? (
-                  <>
-                    <Loader2
-                      size={18}
-                      className="animate-spin"
-                    />
-
-                    Đang lưu...
-                  </>
-                ) : (
-                  <>
-                    <Send size={18} />
-
-                    {initialData
-                      ? "Lưu thay đổi"
-                      : "Tạo thông báo"}
-                  </>
-                )}
-              </button>
-            </div>
+              {initialData
+                ? "Lưu thay đổi"
+                : !isAdmin &&
+                    form.trangThai ===
+                      "DA_DANG"
+                  ? "Gửi duyệt"
+                  : "Tạo thông báo"}
+            </button>
           </div>
         </form>
       </div>
@@ -2540,21 +4436,642 @@ function ThongBaoFormModal({
   );
 }
 
+/* =========================================================
+   DETAIL
+========================================================= */
+
+function DetailModal({
+  item,
+  onClose,
+}: {
+  item:
+    ThongBao | null;
+
+  onClose:
+    () => void;
+}) {
+  if (!item) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4">
+      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="flex justify-between border-b p-6">
+          <div>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <NotificationBadge
+                item={
+                  item
+                }
+              />
+
+              <StatusBadge
+                status={
+                  item.trangThai
+                }
+              />
+            </div>
+
+            <h2 className="text-2xl font-bold">
+              {item.tieuDe}
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500">
+              {formatDate(
+                item.createdAt,
+              )}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={
+              onClose
+            }
+          >
+            <X />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-6">
+          {item.trangThai ===
+            "CHO_DUYET" && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-700">
+              Đang chờ Quản trị viên duyệt.
+            </div>
+          )}
+
+          {item.trangThai ===
+            "TU_CHOI" &&
+            item.lyDoTuChoi && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+              <strong>
+                Lý do từ chối:
+              </strong>{" "}
+              {
+                item.lyDoTuChoi
+              }
+            </div>
+          )}
+
+          <div className="whitespace-pre-wrap leading-7 text-slate-700">
+            {item.noiDung}
+          </div>
+
+          {item
+            .tepDinhKem
+            .length >
+            0 && (
+            <div>
+              <h3 className="mb-3 font-bold">
+                Tài liệu đính kèm
+              </h3>
+
+              <div className="space-y-2">
+                {item.tepDinhKem.map(
+                  (
+                    file,
+                    index,
+                  ) => (
+                    <a
+                      key={`${file.duongDan}-${index}`}
+                      href={
+                        file.duongDan
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 rounded-xl border p-3 hover:bg-slate-50"
+                    >
+                      <FileText
+                        className="text-blue-700"
+                      />
+
+                      <span className="text-sm font-semibold">
+                        {
+                          file.tenTep
+                        }
+                      </span>
+                    </a>
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end border-t p-4">
+          <button
+            type="button"
+            onClick={
+              onClose
+            }
+            className="notification-primary-button"
+          >
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   APPROVE
+========================================================= */
+
+function ApproveModal({
+  item,
+  loading,
+  onClose,
+  onConfirm,
+}: {
+  item:
+    ThongBao | null;
+
+  loading:
+    boolean;
+
+  onClose:
+    () => void;
+
+  onConfirm:
+    () => void;
+}) {
+  if (!item) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <CheckCircle2
+          size={38}
+          className="text-emerald-600"
+        />
+
+        <h3 className="mt-4 text-xl font-bold">
+          Duyệt thông báo
+        </h3>
+
+        <p className="mt-2 text-sm text-slate-600">
+          Phát hành thông báo{" "}
+          <strong>
+            “{item.tieuDe}”
+          </strong>
+          ?
+        </p>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={
+              onClose
+            }
+            className="notification-secondary-button"
+          >
+            Hủy
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              onConfirm
+            }
+            disabled={
+              loading
+            }
+            className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white"
+          >
+            Duyệt và phát hành
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   REJECT
+========================================================= */
+
+function RejectModal({
+  item,
+  reason,
+  loading,
+  onReasonChange,
+  onClose,
+  onConfirm,
+}: {
+  item:
+    ThongBao | null;
+
+  reason:
+    string;
+
+  loading:
+    boolean;
+
+  onReasonChange:
+    (
+      value:
+        string,
+    ) => void;
+
+  onClose:
+    () => void;
+
+  onConfirm:
+    () => void;
+}) {
+  if (!item) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <XCircle
+          size={38}
+          className="text-red-600"
+        />
+
+        <h3 className="mt-4 text-xl font-bold">
+          Từ chối thông báo
+        </h3>
+
+        <textarea
+          value={
+            reason
+          }
+          onChange={(
+            event,
+          ) =>
+            onReasonChange(
+              event.target
+                .value,
+            )
+          }
+          rows={5}
+          maxLength={
+            1000
+          }
+          placeholder="Nhập lý do từ chối..."
+          className="mt-4 w-full rounded-xl border p-3 text-sm outline-none"
+        />
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={
+              onClose
+            }
+            className="notification-secondary-button"
+          >
+            Hủy
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              onConfirm
+            }
+            disabled={
+              loading ||
+              !reason.trim()
+            }
+            className="rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50"
+          >
+            Xác nhận từ chối
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   CONFIRM
+========================================================= */
+
+function ConfirmModal({
+  open,
+  loading,
+  title,
+  message,
+  onClose,
+  onConfirm,
+}: {
+  open:
+    boolean;
+
+  loading:
+    boolean;
+
+  title:
+    string;
+
+  message:
+    string;
+
+  onClose:
+    () => void;
+
+  onConfirm:
+    () => void;
+}) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <Trash2
+          className="text-red-600"
+        />
+
+        <h3 className="mt-4 text-xl font-bold">
+          {title}
+        </h3>
+
+        <p className="mt-2 text-sm text-slate-600">
+          {message}
+        </p>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={
+              onClose
+            }
+            className="notification-secondary-button"
+          >
+            Hủy
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              onConfirm
+            }
+            disabled={
+              loading
+            }
+            className="rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white"
+          >
+            Xóa
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   SMALL COMPONENTS
+========================================================= */
+
+function AlertBox({
+  type,
+  message,
+  onClose,
+}: {
+  type:
+    "success" |
+    "error";
+
+  message:
+    string;
+
+  onClose:
+    () => void;
+}) {
+  const ok =
+    type ===
+    "success";
+
+  return (
+    <div
+      className={`mb-5 flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+        ok
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-red-200 bg-red-50 text-red-700"
+      }`}
+    >
+      <span>
+        {message}
+      </span>
+
+      <button
+        type="button"
+        onClick={
+          onClose
+        }
+      >
+        <X
+          size={16}
+        />
+      </button>
+    </div>
+  );
+}
+
+function WorkflowStatCard({
+  icon,
+  label,
+  value,
+  tone =
+    "default",
+  onClick,
+}: {
+  icon:
+    ReactNode;
+
+  label:
+    string;
+
+  value:
+    number;
+
+  tone?:
+    | "default"
+    | "success"
+    | "warning"
+    | "danger";
+
+  onClick?:
+    () => void;
+}) {
+  const map = {
+    default:
+      "text-slate-900",
+
+    success:
+      "text-emerald-700",
+
+    warning:
+      "text-amber-700",
+
+    danger:
+      "text-red-700",
+  };
+
+  const content = (
+    <div className="flex items-center gap-3">
+      {icon}
+
+      <div>
+        <p className="text-xs text-slate-500">
+          {label}
+        </p>
+
+        <p
+          className={`text-xl font-bold ${map[tone]}`}
+        >
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+
+  return onClick ? (
+    <button
+      type="button"
+      onClick={
+        onClick
+      }
+      className="rounded-2xl border bg-white p-4 text-left shadow-sm hover:shadow-md"
+    >
+      {content}
+    </button>
+  ) : (
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      {content}
+    </div>
+  );
+}
+
+function NotificationBadge({
+  item,
+}: {
+  item:
+    ThongBao;
+}) {
+  if (
+    item.mucDo ===
+    "KHAN_CAP"
+  ) {
+    return (
+      <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">
+        Khẩn cấp
+      </span>
+    );
+  }
+
+  if (
+    item.mucDo ===
+    "QUAN_TRONG"
+  ) {
+    return (
+      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
+        Quan trọng
+      </span>
+    );
+  }
+
+  return (
+    <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">
+      Thông thường
+    </span>
+  );
+}
+
+function StatusBadge({
+  status,
+}: {
+  status:
+    TrangThaiThongBao;
+}) {
+  return (
+    <span
+      className={`rounded-full border px-2.5 py-1 text-xs font-bold ${getStatusBadgeClass(
+        status,
+      )}`}
+    >
+      {
+        TRANG_THAI_LABEL[
+          status
+        ]
+      }
+    </span>
+  );
+}
+
+function ActionButton({
+  title,
+  icon,
+  danger =
+    false,
+  onClick,
+}: {
+  title:
+    string;
+
+  icon:
+    ReactNode;
+
+  danger?:
+    boolean;
+
+  onClick:
+    () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={
+        onClick
+      }
+      className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-xs font-bold ${
+        danger
+          ? "border-red-200 text-red-600 hover:bg-red-50"
+          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+      }`}
+    >
+      {icon}
+
+      {title}
+    </button>
+  );
+}
+
 function FormField({
   label,
-  required = false,
-  wide = false,
+  required =
+    false,
+  wide =
+    false,
   children,
 }: {
-  label: string;
-  required?: boolean;
-  wide?: boolean;
-  children: ReactNode;
+  label:
+    string;
+
+  required?:
+    boolean;
+
+  wide?:
+    boolean;
+
+  children:
+    ReactNode;
 }) {
   return (
     <label
       className={
-        wide ? "md:col-span-2" : ""
+        wide
+          ? "md:col-span-2"
+          : ""
       }
     >
       <span className="mb-2 block text-sm font-semibold text-slate-700">
@@ -2578,30 +5095,33 @@ function ScopeButton({
   description,
   onClick,
 }: {
-  selected: boolean;
-  label: string;
-  description: string;
-  onClick: () => void;
+  selected:
+    boolean;
+
+  label:
+    string;
+
+  description:
+    string;
+
+  onClick:
+    () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      className={`rounded-xl border p-3 text-left transition ${
+      onClick={
+        onClick
+      }
+      className={`rounded-xl border p-3 text-left ${
         selected
-          ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600"
-          : "border-slate-200 bg-white hover:border-blue-300"
+          ? "border-blue-600 bg-blue-50"
+          : "border-slate-200"
       }`}
     >
-      <span
-        className={`block text-sm font-semibold ${
-          selected
-            ? "text-blue-700"
-            : "text-slate-800"
-        }`}
-      >
+      <strong className="block text-sm">
         {label}
-      </span>
+      </strong>
 
       <span className="mt-1 block text-xs text-slate-500">
         {description}
@@ -2613,10 +5133,11 @@ function ScopeButton({
 function ChoiceBox({
   children,
 }: {
-  children: ReactNode;
+  children:
+    ReactNode;
 }) {
   return (
-    <div className="mt-4 grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-slate-200 p-4 md:grid-cols-2">
+    <div className="mt-4 grid max-h-56 gap-2 overflow-y-auto rounded-xl border p-4 md:grid-cols-2">
       {children}
     </div>
   );
@@ -2627,199 +5148,30 @@ function CheckOption({
   label,
   onChange,
 }: {
-  checked: boolean;
-  label: string;
-  onChange: () => void;
+  checked:
+    boolean;
+
+  label:
+    string;
+
+  onChange:
+    () => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-3 transition hover:bg-slate-50">
+    <label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3">
       <input
         type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        className="h-4 w-4 accent-blue-700"
+        checked={
+          checked
+        }
+        onChange={
+          onChange
+        }
       />
 
-      <span className="text-sm text-slate-700">
+      <span className="text-sm">
         {label}
       </span>
     </label>
-  );
-}
-
-function DetailModal({
-  item,
-  onClose,
-}: {
-  item: ThongBao | null;
-  onClose: () => void;
-}) {
-  if (!item) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4"
-      onMouseDown={(event) => {
-        if (
-          event.target ===
-          event.currentTarget
-        ) {
-          onClose();
-        }
-      }}
-    >
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-200 p-6">
-          <div className="pr-4">
-            <div className="mb-3 flex flex-wrap gap-2">
-              <NotificationBadge item={item} />
-
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                {LOAI_LABEL[
-                  item.loaiThongBao
-                ] ?? "Thông báo"}
-              </span>
-            </div>
-
-            <h2 className="text-2xl font-bold text-slate-950">
-              {item.tieuDe}
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-500">
-              Đăng lúc{" "}
-              {formatDate(item.createdAt)}
-
-              {item.nguoiTao?.fullName
-                ? ` bởi ${item.nguoiTao.fullName}`
-                : ""}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-          >
-            <X />
-          </button>
-        </div>
-
-        <div className="p-6">
-          <div className="whitespace-pre-wrap text-[15px] leading-7 text-slate-700">
-            {item.noiDung}
-          </div>
-
-          {item.tepDinhKem.length >
-            0 && (
-            <div className="mt-7">
-              <h3 className="mb-3 font-semibold text-slate-900">
-                Tài liệu đính kèm
-              </h3>
-
-              <div className="space-y-2">
-                {item.tepDinhKem.map(
-                  (file, index) => (
-                    <a
-                      key={`${file.duongDan}-${index}`}
-                      href={file.duongDan}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 transition hover:bg-slate-50"
-                    >
-                      <FileText className="shrink-0 text-blue-700" />
-
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-800">
-                          {file.tenTep}
-                        </p>
-
-                        <p className="text-xs text-slate-500">
-                          {formatFileSize(
-                            file.kichThuoc,
-                          )}
-                        </p>
-                      </div>
-                    </a>
-                  ),
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end border-t border-slate-200 p-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="notification-primary-button"
-          >
-            Đóng
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmModal({
-  open,
-  loading,
-  title,
-  message,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean;
-  loading: boolean;
-  title: string;
-  message: string;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="grid h-12 w-12 place-items-center rounded-full bg-red-50 text-red-600">
-          <Trash2 />
-        </div>
-
-        <h3 className="mt-4 text-xl font-bold text-slate-900">
-          {title}
-        </h3>
-
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          {message}
-        </p>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="notification-secondary-button"
-          >
-            Hủy
-          </button>
-
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={loading}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
-          >
-            {loading && (
-              <Loader2
-                size={17}
-                className="animate-spin"
-              />
-            )}
-
-            Xóa
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

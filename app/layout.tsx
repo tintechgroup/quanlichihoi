@@ -1,14 +1,6 @@
 import type { Metadata } from "next";
-import { Roboto } from "next/font/google";
 
 import "./globals.css";
-
-const roboto = Roboto({
-  subsets: ["latin", "vietnamese"],
-  weight: ["400", "500", "700"],
-  display: "swap",
-  variable: "--font-roboto",
-});
 
 export const metadata: Metadata = {
   title: "Hệ thống quản lý Liên Chi hội",
@@ -22,9 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body className={`${roboto.variable} antialiased`}>
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

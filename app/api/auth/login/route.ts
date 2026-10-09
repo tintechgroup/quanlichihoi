@@ -1,151 +1,374 @@
-import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
-import { createSessionToken } from "@/lib/auth";
-import { connectDB } from "@/lib/mongodb";
+import {
+  NextResponse,
+} from "next/server";
+
+import {
+  connectDB,
+} from "@/lib/mongodb";
+
+import {
+  createSessionToken,
+} from "@/lib/auth";
+
+import {
+  getRequestIp,
+  getUserAgent,
+  writeSystemLog,
+} from "@/lib/systemLog";
+
 import User from "@/models/User";
 
-export async function POST(request: Request) {
+export const dynamic =
+  "force-dynamic";
+
+export const runtime =
+  "nodejs";
+
+/* =========================================================
+   POST /api/auth/login
+========================================================= */
+
+export async function POST(
+  request:
+    Request,
+) {
   try {
-    const body = await request.json();
+    let body: {
+      username?: unknown;
+      password?: unknown;
+    };
+
+    try {
+      body =
+        await request.json();
+    } catch {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Dữ liệu đăng nhập không hợp lệ",
+        },
+        {
+          status:
+            400,
+        },
+      );
+    }
 
     const username =
-      typeof body.username === "string"
-        ? body.username.trim().toLowerCase()
+      typeof body.username ===
+      "string"
+        ? body.username
+            .trim()
+            .toLowerCase()
         : "";
 
     const password =
-      typeof body.password === "string"
+      typeof body.password ===
+      "string"
         ? body.password
         : "";
 
-    if (!username || !password) {
+    if (!username) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Vui lòng nhập tên đăng nhập và mật khẩu",
+          success:
+            false,
+
+          message:
+            "Vui lòng nhập tên đăng nhập",
         },
         {
-          status: 400,
+          status:
+            400,
+        },
+      );
+    }
+
+    if (!password) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Vui lòng nhập mật khẩu",
+        },
+        {
+          status:
+            400,
         },
       );
     }
 
     await connectDB();
 
-    const user = await User.findOne({
-      username,
-    }).select("+password");
+    const user =
+      await User.findOne({
+        username,
+      }).select(
+        "+password",
+      );
 
+    /*
+     * Không phân biệt:
+     * - username không tồn tại
+     * - mật khẩu sai
+     *
+     * Tránh lộ tài khoản nào tồn tại.
+     */
     if (!user) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Tên đăng nhập hoặc mật khẩu không chính xác",
-        },
-        {
-          status: 401,
-        },
-      );
-    }
+          success:
+            false,
 
-    /*
-     * Chỉ chặn khi isActive thực sự bằng false.
-     * Những tài khoản cũ chưa có trường isActive vẫn đăng nhập bình thường.
-     */
-    if (user.isActive === false) {
-      return NextResponse.json(
-        {
-          success: false,
           message:
-            "Tài khoản đã bị tạm ngừng. Vui lòng liên hệ Quản trị viên.",
+            "Tên đăng nhập hoặc mật khẩu không đúng",
         },
         {
-          status: 403,
+          status:
+            401,
         },
       );
     }
 
     if (
-      typeof user.password !== "string" ||
-      user.password.length === 0
+      user.isActive ===
+      false
     ) {
-      console.error(
-        `Tài khoản ${user.username} không có mật khẩu hợp lệ`,
-      );
-
       return NextResponse.json(
         {
-          success: false,
-          message: "Tên đăng nhập hoặc mật khẩu không chính xác",
+          success:
+            false,
+
+          message:
+            "Tài khoản đã bị ngừng hoạt động",
         },
         {
-          status: 401,
+          status:
+            403,
         },
       );
     }
 
-    const passwordIsCorrect = await bcrypt.compare(
-      password,
-      user.password,
-    );
+    const passwordMatched =
+      await bcrypt.compare(
+        password,
+        user.password,
+      );
 
-    if (!passwordIsCorrect) {
+    if (!passwordMatched) {
+      /*
+       * KHÔNG:
+       * - tăng số lần sai
+       * - khóa tài khoản
+       * - tạo lockUntil
+       * - bắt chờ 15 phút
+       */
       return NextResponse.json(
         {
-          success: false,
-          message: "Tên đăng nhập hoặc mật khẩu không chính xác",
+          success:
+            false,
+
+          message:
+            "Tên đăng nhập hoặc mật khẩu không đúng",
         },
         {
-          status: 401,
+          status:
+            401,
         },
       );
     }
 
-    const token = await createSessionToken({
-      userId: user._id.toString(),
-      username: user.username,
-      fullName: user.fullName,
-      role: user.role,
+    /* =====================================================
+       CREATE SESSION
+    ===================================================== */
+
+    const token =
+      await createSessionToken({
+        userId:
+          user._id.toString(),
+
+        username:
+          user.username,
+
+        fullName:
+          user.fullName,
+
+        role:
+          user.role,
+      });
+
+    /* =====================================================
+       SYSTEM LOG
+    ===================================================== */
+
+    await writeSystemLog({
+      userId:
+        user._id.toString(),
+
+      username:
+        user.username,
+
+      fullName:
+        user.fullName,
+
+      role:
+        user.role,
+
+      action:
+        "LOGIN",
+
+      module:
+        "AUTH",
+
+      description:
+        `${user.fullName} đăng nhập hệ thống`,
+
+      targetId:
+        user._id.toString(),
+
+      targetName:
+        user.fullName,
+
+      metadata: {
+        username:
+          user.username,
+      },
+
+      ipAddress:
+        getRequestIp(
+          request,
+        ),
+
+      userAgent:
+        getUserAgent(
+          request,
+        ),
     });
 
-    const response = NextResponse.json(
-      {
-        success: true,
-        message: "Đăng nhập thành công",
+    /* =====================================================
+       RESPONSE
+    ===================================================== */
+
+    const response =
+      NextResponse.json({
+        success:
+          true,
+
+        message:
+          "Đăng nhập thành công",
+
         user: {
-          id: user._id.toString(),
-          username: user.username,
-          fullName: user.fullName,
-          role: user.role,
+          id:
+            user._id.toString(),
+
+          username:
+            user.username,
+
+          fullName:
+            user.fullName,
+
+          role:
+            user.role,
+
+          email:
+            user.email ||
+            "",
+
+          phone:
+            user.phone ||
+            "",
+
+          chiHoiId:
+            user.chiHoiId
+              ? user.chiHoiId.toString()
+              : null,
         },
-      },
+
+        data: {
+          id:
+            user._id.toString(),
+
+          username:
+            user.username,
+
+          fullName:
+            user.fullName,
+
+          role:
+            user.role,
+
+          email:
+            user.email ||
+            "",
+
+          phone:
+            user.phone ||
+            "",
+
+          chiHoiId:
+            user.chiHoiId
+              ? user.chiHoiId.toString()
+              : null,
+        },
+      });
+
+    response.cookies.set(
+      "session",
+      token,
       {
-        status: 200,
+        httpOnly:
+          true,
+
+        secure:
+          process.env.NODE_ENV ===
+          "production",
+
+        sameSite:
+          "lax",
+
+        path:
+          "/",
+
+        maxAge:
+          60 *
+          60 *
+          8,
       },
     );
-
-    response.cookies.set({
-      name: "session",
-      value: token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 8,
-      path: "/",
-    });
 
     return response;
-  } catch (error) {
-    console.error("Lỗi đăng nhập:", error);
+  } catch (
+    error
+  ) {
+    console.error(
+      "POST /api/auth/login:",
+      error,
+    );
 
     return NextResponse.json(
       {
-        success: false,
-        message: "Đã xảy ra lỗi trong quá trình đăng nhập",
+        success:
+          false,
+
+        message:
+          process.env.NODE_ENV ===
+          "development"
+            ? error instanceof
+              Error
+              ? error.message
+              : "Không thể đăng nhập"
+            : "Không thể đăng nhập",
       },
       {
-        status: 500,
+        status:
+          500,
       },
     );
   }

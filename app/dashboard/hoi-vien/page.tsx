@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   Award,
+  ClipboardCheck,
   Download,
   Eye,
   EyeOff,
@@ -16,15 +19,54 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import type {
+  FormEvent,
+  ReactNode,
+} from "react";
+
 import * as XLSX from "xlsx";
 
 import ResetMatKhauHoiVienModal from "@/components/hoi-vien/ResetMatKhauHoiVienModal";
 
-type GioiTinh = "NAM" | "NU" | "KHAC";
-type TrangThaiHoiVien = "DANG_HOAT_DONG" | "TAM_NGUNG";
-type XepLoai = "XUAT_SAC" | "TOT" | "KHA" | "TRUNG_BINH" | "YEU";
+/* =========================================================
+   TYPES
+========================================================= */
+
+type GioiTinh =
+  | "NAM"
+  | "NU"
+  | "KHAC";
+
+type TrangThaiHoiVien =
+  | "DANG_HOAT_DONG"
+  | "TAM_NGUNG";
+
+type XepLoai =
+  | "XUAT_SAC"
+  | "TOT"
+  | "KHA"
+  | "TRUNG_BINH"
+  | "YEU";
+
+type UserRole =
+  | "ADMIN"
+  | "BAN_CHAP_HANH"
+  | "CHI_HOI_TRUONG"
+  | "HOI_VIEN";
+
+type CurrentUser = {
+  id: string;
+  username: string;
+  fullName: string;
+  role: UserRole;
+};
 
 type ChiHoi = {
   _id: string;
@@ -46,19 +88,35 @@ type DanhGia = {
 
 type HoiVien = {
   _id: string;
+
   maHoiVien: string;
   hoTen: string;
+
   ngaySinh?: string;
   gioiTinh?: GioiTinh;
+
   email?: string;
   soDienThoai?: string;
+
   lop?: string;
   khoaHoc?: string;
   diaChi?: string;
-  chiHoiId: ChiHoi | string;
-  taiKhoanId?: TaiKhoan | string | null;
+
+  chiHoiId:
+    | ChiHoi
+    | string;
+
+  taiKhoanId?:
+    | TaiKhoan
+    | string
+    | null;
+
   trangThai: TrangThaiHoiVien;
-  danhGia?: DanhGia | null;
+
+  danhGia?:
+    | DanhGia
+    | null;
+
   createdAt?: string;
 };
 
@@ -76,6 +134,10 @@ type HoiVienForm = {
   trangThai: TrangThaiHoiVien;
 };
 
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
 const EMPTY_FORM: HoiVienForm = {
   maHoiVien: "",
   hoTen: "",
@@ -87,13 +149,21 @@ const EMPTY_FORM: HoiVienForm = {
   khoaHoc: "",
   diaChi: "",
   chiHoiId: "",
-  trangThai: "DANG_HOAT_DONG",
+  trangThai:
+    "DANG_HOAT_DONG",
 };
 
-function getChiHoi(hoiVien: HoiVien): ChiHoi | null {
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function getChiHoi(
+  hoiVien: HoiVien,
+): ChiHoi | null {
   if (
     hoiVien.chiHoiId &&
-    typeof hoiVien.chiHoiId === "object" &&
+    typeof hoiVien.chiHoiId ===
+      "object" &&
     "_id" in hoiVien.chiHoiId
   ) {
     return hoiVien.chiHoiId;
@@ -102,10 +172,13 @@ function getChiHoi(hoiVien: HoiVien): ChiHoi | null {
   return null;
 }
 
-function getTaiKhoan(hoiVien: HoiVien): TaiKhoan | null {
+function getTaiKhoan(
+  hoiVien: HoiVien,
+): TaiKhoan | null {
   if (
     hoiVien.taiKhoanId &&
-    typeof hoiVien.taiKhoanId === "object" &&
+    typeof hoiVien.taiKhoanId ===
+      "object" &&
     "_id" in hoiVien.taiKhoanId
   ) {
     return hoiVien.taiKhoanId;
@@ -114,74 +187,264 @@ function getTaiKhoan(hoiVien: HoiVien): TaiKhoan | null {
   return null;
 }
 
-function formatDate(value?: string) {
-  if (!value) return "—";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
+function formatDate(
+  value?: string,
+) {
+  if (!value) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat("vi-VN").format(date);
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat(
+    "vi-VN",
+  ).format(date);
 }
 
-function formatGender(value?: GioiTinh) {
-  if (value === "NAM") return "Nam";
-  if (value === "NU") return "Nữ";
-  return "Khác";
+function formatGender(
+  value?: GioiTinh,
+) {
+  if (value === "NAM") {
+    return "Nam";
+  }
+
+  if (value === "NU") {
+    return "Nữ";
+  }
+
+  if (value === "KHAC") {
+    return "Khác";
+  }
+
+  return "—";
 }
 
-function formatRating(value?: XepLoai) {
-  const labels: Record<XepLoai, string> = {
+function formatRating(
+  value?: XepLoai,
+) {
+  const labels: Record<
+    XepLoai,
+    string
+  > = {
     XUAT_SAC: "Xuất sắc",
     TOT: "Tốt",
     KHA: "Khá",
-    TRUNG_BINH: "Trung bình",
+    TRUNG_BINH:
+      "Trung bình",
     YEU: "Yếu",
   };
 
-  return value ? labels[value] : "Chưa đánh giá";
+  return value
+    ? labels[value]
+    : "Chưa đánh giá";
 }
 
-function normalizeSearchText(value?: string | null) {
+function normalizeSearchText(
+  value?: string | null,
+) {
   return (value || "")
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(
+      /[\u0300-\u036f]/g,
+      "",
+    )
     .replace(/đ/g, "d")
     .replace(/Đ/g, "D")
     .toLowerCase()
     .trim();
 }
 
+function extractCurrentUser(
+  result: Record<
+    string,
+    unknown
+  >,
+): CurrentUser | null {
+  const data = result.data as Record<string, unknown> | undefined;
+  const raw = (result.user ?? data?.user ?? data) as
+    Record<string, unknown> | null | undefined;
+
+  if (
+    !raw ||
+    !raw.role
+  ) {
+    return null;
+  }
+
+  return {
+    id: String(
+      raw.id ??
+        raw._id ??
+        raw.userId ??
+        "",
+    ),
+
+    username: String(
+      raw.username ?? "",
+    ),
+
+    fullName: String(
+      raw.fullName ??
+        raw.hoTen ??
+        "",
+    ),
+
+    role:
+      raw.role as UserRole,
+  };
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default function HoiVienPage() {
-  const [members, setMembers] = useState<HoiVien[]>([]);
-  const [branches, setBranches] = useState<ChiHoi[]>([]);
+  const [
+    currentUser,
+    setCurrentUser,
+  ] =
+    useState<CurrentUser | null>(
+      null,
+    );
 
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [
+    members,
+    setMembers,
+  ] = useState<HoiVien[]>([]);
 
-  const [search, setSearch] = useState("");
-  const [branchFilter, setBranchFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [
+    branches,
+    setBranches,
+  ] = useState<ChiHoi[]>([]);
 
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingMember, setEditingMember] = useState<HoiVien | null>(null);
-  const [form, setForm] = useState<HoiVienForm>(EMPTY_FORM);
+  const [
+    submitting,
+    setSubmitting,
+  ] = useState(false);
 
-  const [viewMember, setViewMember] = useState<HoiVien | null>(null);
-  const [deleteMember, setDeleteMember] = useState<HoiVien | null>(null);
-  const [statusMember, setStatusMember] = useState<HoiVien | null>(null);
-  const [ratingMember, setRatingMember] = useState<HoiVien | null>(null);
-  const [accountMember, setAccountMember] = useState<HoiVien | null>(null);
-  const [resetMember, setResetMember] = useState<HoiVien | null>(null);
+  const [
+    search,
+    setSearch,
+  ] = useState("");
 
-  const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
+  const [
+    branchFilter,
+    setBranchFilter,
+  ] = useState("");
 
-  const [ratingForm, setRatingForm] = useState<{
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState("");
+
+  const [
+    message,
+    setMessage,
+  ] = useState("");
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  /* FORM */
+
+  const [
+    formOpen,
+    setFormOpen,
+  ] = useState(false);
+
+  const [
+    editingMember,
+    setEditingMember,
+  ] =
+    useState<HoiVien | null>(
+      null,
+    );
+
+  const [
+    form,
+    setForm,
+  ] =
+    useState<HoiVienForm>(
+      EMPTY_FORM,
+    );
+
+  /* MODALS */
+
+  const [
+    viewMember,
+    setViewMember,
+  ] =
+    useState<HoiVien | null>(
+      null,
+    );
+
+  const [
+    deleteMember,
+    setDeleteMember,
+  ] =
+    useState<HoiVien | null>(
+      null,
+    );
+
+  const [
+    statusMember,
+    setStatusMember,
+  ] =
+    useState<HoiVien | null>(
+      null,
+    );
+
+  const [
+    ratingMember,
+    setRatingMember,
+  ] =
+    useState<HoiVien | null>(
+      null,
+    );
+
+  const [
+    accountMember,
+    setAccountMember,
+  ] =
+    useState<HoiVien | null>(
+      null,
+    );
+
+  const [
+    resetMember,
+    setResetMember,
+  ] =
+    useState<HoiVien | null>(
+      null,
+    );
+
+  const [
+    refreshConfirmOpen,
+    setRefreshConfirmOpen,
+  ] = useState(false);
+
+  /* RATING */
+
+  const [
+    ratingForm,
+    setRatingForm,
+  ] = useState<{
     xepLoai: XepLoai;
     nhanXet: string;
   }>({
@@ -189,61 +452,254 @@ export default function HoiVienPage() {
     nhanXet: "",
   });
 
-  const [accountForm, setAccountForm] = useState({
+  /* ACCOUNT */
+
+  const [
+    accountForm,
+    setAccountForm,
+  ] = useState({
     username: "",
     password: "",
   });
 
-  const [showAccountPassword, setShowAccountPassword] = useState(false);
+  const [
+    showAccountPassword,
+    setShowAccountPassword,
+  ] = useState(false);
+
+  /* =======================================================
+     ROLE
+  ======================================================= */
+
+  const isAdmin =
+    currentUser?.role ===
+    "ADMIN";
+
+  const isBCH =
+    currentUser?.role ===
+    "BAN_CHAP_HANH";
+
+  const isChiHoiTruong =
+    currentUser?.role ===
+    "CHI_HOI_TRUONG";
+
+  /*
+   * ADMIN/BCH:
+   * Có thể thêm trực tiếp,
+   * cấp tài khoản, khóa, xóa...
+   *
+   * Chi hội trưởng:
+   * dùng luồng đề xuất thành viên mới.
+   */
+  const canDirectManageMember =
+    isAdmin || isBCH;
+
+  const canEditMember =
+    canDirectManageMember ||
+    isChiHoiTruong;
+
+  const canRateMember =
+    canDirectManageMember ||
+    isChiHoiTruong;
+
+  const proposalButtonLabel =
+    isChiHoiTruong
+      ? "Đề xuất Hội viên mới"
+      : "Duyệt đề xuất";
+
+  /* =======================================================
+     COMMON
+  ======================================================= */
 
   function clearNotice() {
     setMessage("");
     setError("");
   }
 
+  /* =======================================================
+     LOAD DATA
+  ======================================================= */
+
   async function loadData() {
     try {
       setLoading(true);
       setError("");
 
-      const [memberResponse, branchResponse] = await Promise.all([
-        fetch("/api/hoi-vien", {
-          method: "GET",
-          cache: "no-store",
-        }),
-        fetch("/api/chi-hoi", {
-          method: "GET",
-          cache: "no-store",
-        }),
-      ]);
+      /*
+       * Lấy user trước để biết role.
+       */
+      const userResponse =
+        await fetch(
+          "/api/auth/me",
+          {
+            method: "GET",
+            cache: "no-store",
+            credentials:
+              "include",
+          },
+        );
 
-      const memberResult = await memberResponse.json();
-      const branchResult = await branchResponse.json();
+      const userResult =
+        await userResponse.json();
 
-      if (!memberResponse.ok || !memberResult.success) {
+      if (
+        !userResponse.ok ||
+        !userResult.success
+      ) {
         throw new Error(
-          memberResult.message || "Không thể tải danh sách Hội viên",
+          userResult.message ||
+            "Không thể tải thông tin người dùng",
         );
       }
 
-      if (!branchResponse.ok || !branchResult.success) {
+      const user =
+        extractCurrentUser(
+          userResult,
+        );
+
+      if (!user) {
         throw new Error(
-          branchResult.message || "Không thể tải danh sách Chi hội",
+          "Không xác định được quyền người dùng",
         );
       }
+
+      setCurrentUser(user);
+
+      /*
+       * API Hội viên phải tự phân quyền:
+       *
+       * ADMIN/BCH -> toàn bộ
+       * CHT -> Hội viên Chi hội mình
+       */
+      const memberResponse =
+        await fetch(
+          "/api/hoi-vien",
+          {
+            method: "GET",
+            cache: "no-store",
+            credentials:
+              "include",
+          },
+        );
+
+      const memberResult =
+        await memberResponse.json();
+
+      if (
+        !memberResponse.ok ||
+        !memberResult.success
+      ) {
+        throw new Error(
+          memberResult.message ||
+            "Không thể tải danh sách Hội viên",
+        );
+      }
+
+      const memberList: HoiVien[] =
+        Array.isArray(
+          memberResult.data,
+        )
+          ? memberResult.data
+          : [];
 
       setMembers(
-        Array.isArray(memberResult.data) ? memberResult.data : [],
+        memberList,
       );
 
-      setBranches(
-        Array.isArray(branchResult.data) ? branchResult.data : [],
-      );
+      /*
+       * ADMIN / BCH có quyền gọi
+       * /api/chi-hoi.
+       */
+      if (
+        user.role === "ADMIN" ||
+        user.role ===
+          "BAN_CHAP_HANH"
+      ) {
+        const branchResponse =
+          await fetch(
+            "/api/chi-hoi",
+            {
+              method: "GET",
+              cache: "no-store",
+              credentials:
+                "include",
+            },
+          );
+
+        const branchResult =
+          await branchResponse.json();
+
+        if (
+          !branchResponse.ok ||
+          !branchResult.success
+        ) {
+          throw new Error(
+            branchResult.message ||
+              "Không thể tải danh sách Chi hội",
+          );
+        }
+
+        setBranches(
+          Array.isArray(
+            branchResult.data,
+          )
+            ? branchResult.data
+            : [],
+        );
+
+        return;
+      }
+
+      /*
+       * CHI_HOI_TRUONG không gọi
+       * /api/chi-hoi để tránh 403.
+       *
+       * Lấy Chi hội từ danh sách
+       * Hội viên đã populate.
+       */
+      if (
+        user.role ===
+        "CHI_HOI_TRUONG"
+      ) {
+        const map =
+          new Map<
+            string,
+            ChiHoi
+          >();
+
+        memberList.forEach(
+          (member) => {
+            const branch =
+              getChiHoi(member);
+
+            if (
+              branch?._id
+            ) {
+              map.set(
+                branch._id,
+                branch,
+              );
+            }
+          },
+        );
+
+        setBranches(
+          Array.from(
+            map.values(),
+          ),
+        );
+
+        return;
+      }
+
+      setBranches([]);
     } catch (loadError) {
       setMembers([]);
+      setBranches([]);
 
       setError(
-        loadError instanceof Error
+        loadError instanceof
+          Error
           ? loadError.message
           : "Đã xảy ra lỗi khi tải dữ liệu",
       );
@@ -253,185 +709,392 @@ export default function HoiVienPage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Start the request and its loading state together when effect dependencies change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tải dữ liệu khi mở trang.
     void loadData();
   }, []);
 
-  const filteredMembers = useMemo(() => {
-    const keyword = normalizeSearchText(search);
+  /* =======================================================
+     FILTER
+  ======================================================= */
 
-    return members.filter((member) => {
-      const memberBranchId =
-        typeof member.chiHoiId === "string"
-          ? member.chiHoiId
-          : member.chiHoiId?._id;
+  const filteredMembers =
+    useMemo(() => {
+      const keyword =
+        normalizeSearchText(
+          search,
+        );
 
-      const searchableContent = [
-        member.maHoiVien,
-        member.hoTen,
-        member.email,
-        member.soDienThoai,
-        member.lop,
-        member.khoaHoc,
-        getChiHoi(member)?.maChiHoi,
-        getChiHoi(member)?.tenChiHoi,
-        getTaiKhoan(member)?.username,
-      ]
-        .map((value) => normalizeSearchText(value))
-        .join(" ");
+      return members.filter(
+        (member) => {
+          const memberBranchId =
+            typeof member.chiHoiId ===
+            "string"
+              ? member.chiHoiId
+              : member
+                  .chiHoiId?._id;
 
-      const matchesKeyword =
-        keyword === "" || searchableContent.includes(keyword);
+          const searchable =
+            [
+              member.maHoiVien,
+              member.hoTen,
+              member.email,
+              member.soDienThoai,
+              member.lop,
+              member.khoaHoc,
+              getChiHoi(
+                member,
+              )?.maChiHoi,
+              getChiHoi(
+                member,
+              )?.tenChiHoi,
+              getTaiKhoan(
+                member,
+              )?.username,
+            ]
+              .map((value) =>
+                normalizeSearchText(
+                  value,
+                ),
+              )
+              .join(" ");
 
-      const matchesBranch =
-        branchFilter === "" || memberBranchId === branchFilter;
+          const matchesSearch =
+            !keyword ||
+            searchable.includes(
+              keyword,
+            );
 
-      const matchesStatus =
-        statusFilter === "" || member.trangThai === statusFilter;
+          const matchesBranch =
+            !branchFilter ||
+            memberBranchId ===
+              branchFilter;
 
-      return matchesKeyword && matchesBranch && matchesStatus;
-    });
-  }, [members, search, branchFilter, statusFilter]);
+          const matchesStatus =
+            !statusFilter ||
+            member.trangThai ===
+              statusFilter;
 
-  const statistics = useMemo(() => {
-    return {
-      total: members.length,
-      active: members.filter(
-        (member) => member.trangThai === "DANG_HOAT_DONG",
-      ).length,
-      accounts: members.filter((member) => Boolean(member.taiKhoanId))
-        .length,
-      ratings: members.filter((member) => Boolean(member.danhGia)).length,
-    };
-  }, [members]);
+          return (
+            matchesSearch &&
+            matchesBranch &&
+            matchesStatus
+          );
+        },
+      );
+    }, [
+      members,
+      search,
+      branchFilter,
+      statusFilter,
+    ]);
+
+  const statistics =
+    useMemo(
+      () => ({
+        total:
+          members.length,
+
+        active:
+          members.filter(
+            (member) =>
+              member.trangThai ===
+              "DANG_HOAT_DONG",
+          ).length,
+
+        accounts:
+          members.filter(
+            (member) =>
+              Boolean(
+                member.taiKhoanId,
+              ),
+          ).length,
+
+        ratings:
+          members.filter(
+            (member) =>
+              Boolean(
+                member.danhGia,
+              ),
+          ).length,
+      }),
+      [members],
+    );
+
+  /* =======================================================
+     CREATE / EDIT
+  ======================================================= */
 
   function openCreateForm() {
+    if (
+      !canDirectManageMember
+    ) {
+      return;
+    }
+
     clearNotice();
-    setEditingMember(null);
-    setForm(EMPTY_FORM);
+
+    setEditingMember(
+      null,
+    );
+
+    setForm(
+      EMPTY_FORM,
+    );
+
     setFormOpen(true);
   }
 
-  function openEditForm(member: HoiVien) {
+  function openEditForm(
+    member: HoiVien,
+  ) {
+    if (!canEditMember) {
+      return;
+    }
+
     const branchId =
-      typeof member.chiHoiId === "string"
+      typeof member.chiHoiId ===
+      "string"
         ? member.chiHoiId
-        : member.chiHoiId?._id || "";
+        : member
+            .chiHoiId?._id ||
+          "";
 
     clearNotice();
-    setEditingMember(member);
+
+    setEditingMember(
+      member,
+    );
 
     setForm({
-      maHoiVien: member.maHoiVien || "",
-      hoTen: member.hoTen || "",
-      ngaySinh: member.ngaySinh
-        ? new Date(member.ngaySinh).toISOString().slice(0, 10)
-        : "",
-      gioiTinh: member.gioiTinh || "NAM",
-      email: member.email || "",
-      soDienThoai: member.soDienThoai || "",
-      lop: member.lop || "",
-      khoaHoc: member.khoaHoc || "",
-      diaChi: member.diaChi || "",
-      chiHoiId: branchId,
-      trangThai: member.trangThai || "DANG_HOAT_DONG",
+      maHoiVien:
+        member.maHoiVien ||
+        "",
+
+      hoTen:
+        member.hoTen || "",
+
+      ngaySinh:
+        member.ngaySinh
+          ? new Date(
+              member.ngaySinh,
+            )
+              .toISOString()
+              .slice(0, 10)
+          : "",
+
+      gioiTinh:
+        member.gioiTinh ||
+        "NAM",
+
+      email:
+        member.email || "",
+
+      soDienThoai:
+        member.soDienThoai ||
+        "",
+
+      lop:
+        member.lop || "",
+
+      khoaHoc:
+        member.khoaHoc || "",
+
+      diaChi:
+        member.diaChi || "",
+
+      chiHoiId:
+        branchId,
+
+      trangThai:
+        member.trangThai ||
+        "DANG_HOAT_DONG",
     });
 
     setFormOpen(true);
   }
 
-  function openRating(member: HoiVien) {
-    clearNotice();
-    setRatingMember(member);
-
-    setRatingForm({
-      xepLoai: member.danhGia?.xepLoai || "TOT",
-      nhanXet: member.danhGia?.nhanXet || "",
-    });
-  }
-
-  function openCreateAccount(member: HoiVien) {
-    clearNotice();
-    setAccountMember(member);
-
-    setAccountForm({
-      username: member.maHoiVien.toLowerCase(),
-      password: "",
-    });
-
-    setShowAccountPassword(false);
-  }
-
-  function openResetPassword(member: HoiVien) {
-    clearNotice();
-
-    const account = getTaiKhoan(member);
-
-    if (!account) {
-      setError(
-        "Không lấy được thông tin tài khoản Hội viên. Vui lòng làm mới dữ liệu.",
-      );
-      return;
-    }
-
-    setResetMember(member);
-  }
-
-  async function handleSaveMember(event: FormEvent<HTMLFormElement>) {
+  async function handleSaveMember(
+    event:
+      FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
-    if (!form.maHoiVien.trim()) {
-      setError("Mã Hội viên không được để trống");
+    if (
+      !canEditMember
+    ) {
+      setError(
+        "Bạn không có quyền cập nhật Hội viên",
+      );
+
       return;
     }
 
-    if (!form.hoTen.trim()) {
-      setError("Họ và tên không được để trống");
+    /*
+     * Chi hội trưởng không được
+     * tạo trực tiếp Hội viên.
+     */
+    if (
+      !editingMember &&
+      isChiHoiTruong
+    ) {
+      setError(
+        "Chi hội trưởng phải sử dụng chức năng Đề xuất Hội viên mới",
+      );
+
+      return;
+    }
+
+    const maHoiVien =
+      form.maHoiVien
+        .trim()
+        .toUpperCase();
+
+    const hoTen =
+      form.hoTen.trim();
+
+    const email =
+      form.email
+        .trim()
+        .toLowerCase();
+
+    const phone =
+      form.soDienThoai.trim();
+
+    if (!maHoiVien) {
+      setError(
+        "Mã Hội viên không được để trống",
+      );
+
+      return;
+    }
+
+    if (!hoTen) {
+      setError(
+        "Họ và tên không được để trống",
+      );
+
+      return;
+    }
+
+    /*
+     * Feedback yêu cầu kiểm tra
+     * định dạng số điện thoại.
+     */
+    if (
+      phone &&
+      !/^0\d{9}$/.test(
+        phone,
+      )
+    ) {
+      setError(
+        "Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng 0",
+      );
+
+      return;
+    }
+
+    /*
+     * Kiểm tra email.
+     */
+    if (
+      email &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        email,
+      )
+    ) {
+      setError(
+        "Email không đúng định dạng",
+      );
+
       return;
     }
 
     if (!form.chiHoiId) {
-      setError("Vui lòng chọn Chi hội");
+      setError(
+        "Vui lòng chọn Chi hội",
+      );
+
       return;
     }
 
     try {
       setSubmitting(true);
+
       clearNotice();
 
-      const url = editingMember
-        ? `/api/hoi-vien/${editingMember._id}`
-        : "/api/hoi-vien";
+      const url =
+        editingMember
+          ? `/api/hoi-vien/${editingMember._id}`
+          : "/api/hoi-vien";
 
-      const response = await fetch(url, {
-        method: editingMember ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...form,
-          maHoiVien: form.maHoiVien.trim(),
-          hoTen: form.hoTen.trim(),
-          email: form.email.trim(),
-          soDienThoai: form.soDienThoai.trim(),
-          lop: form.lop.trim(),
-          khoaHoc: form.khoaHoc.trim(),
-          diaChi: form.diaChi.trim(),
-          ngaySinh: form.ngaySinh || null,
-        }),
-      });
+      const response =
+        await fetch(
+          url,
+          {
+            method:
+              editingMember
+                ? "PUT"
+                : "POST",
 
-      const result = await response.json();
+            credentials:
+              "include",
 
-      if (!response.ok || !result.success) {
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                ...form,
+
+                maHoiVien,
+
+                hoTen,
+
+                email,
+
+                soDienThoai:
+                  phone,
+
+                lop:
+                  form.lop.trim(),
+
+                khoaHoc:
+                  form.khoaHoc.trim(),
+
+                diaChi:
+                  form.diaChi.trim(),
+
+                ngaySinh:
+                  form.ngaySinh ||
+                  null,
+              }),
+          },
+        );
+
+      const result =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
         throw new Error(
-          result.message || "Không thể lưu thông tin Hội viên",
+          result.message ||
+            "Không thể lưu thông tin Hội viên",
         );
       }
 
       setFormOpen(false);
-      setEditingMember(null);
-      setForm(EMPTY_FORM);
+
+      setEditingMember(
+        null,
+      );
+
+      setForm(
+        EMPTY_FORM,
+      );
 
       setMessage(
         result.message ||
@@ -443,7 +1106,8 @@ export default function HoiVienPage() {
       await loadData();
     } catch (saveError) {
       setError(
-        saveError instanceof Error
+        saveError instanceof
+          Error
           ? saveError.message
           : "Đã xảy ra lỗi khi lưu Hội viên",
       );
@@ -452,38 +1116,68 @@ export default function HoiVienPage() {
     }
   }
 
-  async function handleDeleteMember() {
-    if (!deleteMember) return;
+  /* =======================================================
+     DELETE
+  ======================================================= */
 
-    const deletingId = deleteMember._id;
+  async function handleDeleteMember() {
+    if (
+      !deleteMember ||
+      !canDirectManageMember
+    ) {
+      return;
+    }
+
+    const id =
+      deleteMember._id;
 
     try {
       setSubmitting(true);
+
       clearNotice();
 
-      const response = await fetch(`/api/hoi-vien/${deletingId}`, {
-        method: "DELETE",
-        cache: "no-store",
-      });
+      const response =
+        await fetch(
+          `/api/hoi-vien/${id}`,
+          {
+            method:
+              "DELETE",
 
-      const result = await response.json();
+            credentials:
+              "include",
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Không thể xóa Hội viên");
+            cache:
+              "no-store",
+          },
+        );
+
+      const result =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Không thể xóa Hội viên",
+        );
       }
 
-      setDeleteMember(null);
-
-      setMembers((current) =>
-        current.filter((member) => member._id !== deletingId),
+      setDeleteMember(
+        null,
       );
 
-      setMessage(result.message || "Xóa Hội viên thành công");
+      setMessage(
+        result.message ||
+          "Xóa Hội viên thành công",
+      );
 
       await loadData();
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error
+        deleteError instanceof
+          Error
           ? deleteError.message
           : "Đã xảy ra lỗi khi xóa Hội viên",
       );
@@ -492,42 +1186,106 @@ export default function HoiVienPage() {
     }
   }
 
-  async function handleSaveRating(event: FormEvent<HTMLFormElement>) {
+  /* =======================================================
+     RATING
+  ======================================================= */
+
+  function openRating(
+    member: HoiVien,
+  ) {
+    if (!canRateMember) {
+      return;
+    }
+
+    clearNotice();
+
+    setRatingMember(
+      member,
+    );
+
+    setRatingForm({
+      xepLoai:
+        member.danhGia
+          ?.xepLoai ||
+        "TOT",
+
+      nhanXet:
+        member.danhGia
+          ?.nhanXet ||
+        "",
+    });
+  }
+
+  async function handleSaveRating(
+    event:
+      FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
-    if (!ratingMember) return;
+    if (
+      !ratingMember ||
+      !canRateMember
+    ) {
+      return;
+    }
 
     try {
       setSubmitting(true);
+
       clearNotice();
 
-      const response = await fetch(
-        `/api/hoi-vien/${ratingMember._id}/danh-gia`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
+      const response =
+        await fetch(
+          `/api/hoi-vien/${ratingMember._id}/danh-gia`,
+          {
+            method: "PUT",
+
+            credentials:
+              "include",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                xepLoai:
+                  ratingForm.xepLoai,
+
+                nhanXet:
+                  ratingForm.nhanXet.trim(),
+              }),
           },
-          body: JSON.stringify({
-            xepLoai: ratingForm.xepLoai,
-            nhanXet: ratingForm.nhanXet.trim(),
-          }),
-        },
-      );
+        );
 
-      const result = await response.json();
+      const result =
+        await response.json();
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Không thể lưu đánh giá");
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Không thể lưu đánh giá",
+        );
       }
 
-      setRatingMember(null);
-      setMessage(result.message || "Đánh giá Hội viên thành công");
+      setRatingMember(
+        null,
+      );
+
+      setMessage(
+        result.message ||
+          "Đánh giá Hội viên thành công",
+      );
 
       await loadData();
     } catch (ratingError) {
       setError(
-        ratingError instanceof Error
+        ratingError instanceof
+          Error
           ? ratingError.message
           : "Đã xảy ra lỗi khi đánh giá Hội viên",
       );
@@ -536,61 +1294,137 @@ export default function HoiVienPage() {
     }
   }
 
-  async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  /* =======================================================
+     CREATE ACCOUNT
+  ======================================================= */
 
-    if (!accountMember) return;
-
-    const username = accountForm.username.trim();
-
-    if (!username) {
-      setError("Tên đăng nhập không được để trống");
+  function openCreateAccount(
+    member: HoiVien,
+  ) {
+    if (
+      !canDirectManageMember
+    ) {
       return;
     }
 
-    if (accountForm.password.length < 6) {
-      setError("Mật khẩu phải có ít nhất 6 ký tự");
+    clearNotice();
+
+    setAccountMember(
+      member,
+    );
+
+    setAccountForm({
+      username:
+        member.maHoiVien.toLowerCase(),
+
+      password: "",
+    });
+
+    setShowAccountPassword(
+      false,
+    );
+  }
+
+  async function handleCreateAccount(
+    event:
+      FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    if (
+      !accountMember ||
+      !canDirectManageMember
+    ) {
+      return;
+    }
+
+    const username =
+      accountForm.username.trim();
+
+    if (!username) {
+      setError(
+        "Tên đăng nhập không được để trống",
+      );
+
+      return;
+    }
+
+    if (
+      accountForm.password
+        .length < 6
+    ) {
+      setError(
+        "Mật khẩu phải có ít nhất 6 ký tự",
+      );
+
       return;
     }
 
     try {
       setSubmitting(true);
+
       clearNotice();
 
-      const response = await fetch(
-        `/api/hoi-vien/${accountMember._id}/cap-tai-khoan`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+      const response =
+        await fetch(
+          `/api/hoi-vien/${accountMember._id}/cap-tai-khoan`,
+          {
+            method: "POST",
+
+            credentials:
+              "include",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                username,
+
+                password:
+                  accountForm.password,
+              }),
           },
-          body: JSON.stringify({
-            username,
-            password: accountForm.password,
-          }),
-        },
-      );
+        );
 
-      const result = await response.json();
+      const result =
+        await response.json();
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Không thể cấp tài khoản");
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Không thể cấp tài khoản",
+        );
       }
 
-      setAccountMember(null);
+      setAccountMember(
+        null,
+      );
 
       setAccountForm({
         username: "",
         password: "",
       });
 
-      setShowAccountPassword(false);
-      setMessage(result.message || "Cấp tài khoản thành công");
+      setShowAccountPassword(
+        false,
+      );
+
+      setMessage(
+        result.message ||
+          "Cấp tài khoản thành công",
+      );
 
       await loadData();
     } catch (accountError) {
       setError(
-        accountError instanceof Error
+        accountError instanceof
+          Error
           ? accountError.message
           : "Đã xảy ra lỗi khi cấp tài khoản",
       );
@@ -599,44 +1433,104 @@ export default function HoiVienPage() {
     }
   }
 
+  /* =======================================================
+     RESET PASSWORD
+  ======================================================= */
+
+  function openResetPassword(
+    member: HoiVien,
+  ) {
+    if (
+      !canDirectManageMember
+    ) {
+      return;
+    }
+
+    clearNotice();
+
+    const account =
+      getTaiKhoan(member);
+
+    if (!account) {
+      setError(
+        "Không lấy được thông tin tài khoản Hội viên. Vui lòng làm mới dữ liệu.",
+      );
+
+      return;
+    }
+
+    setResetMember(
+      member,
+    );
+  }
+
+  /* =======================================================
+     STATUS
+  ======================================================= */
+
   async function handleChangeStatus() {
-    if (!statusMember) return;
+    if (
+      !statusMember ||
+      !canDirectManageMember
+    ) {
+      return;
+    }
 
     const nextStatus: TrangThaiHoiVien =
-      statusMember.trangThai === "DANG_HOAT_DONG"
+      statusMember.trangThai ===
+      "DANG_HOAT_DONG"
         ? "TAM_NGUNG"
         : "DANG_HOAT_DONG";
 
     try {
       setSubmitting(true);
+
       clearNotice();
 
-      const response = await fetch(
-        `/api/hoi-vien/${statusMember._id}/trang-thai`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
+      const response =
+        await fetch(
+          `/api/hoi-vien/${statusMember._id}/trang-thai`,
+          {
+            method:
+              "PATCH",
+
+            credentials:
+              "include",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                trangThai:
+                  nextStatus,
+              }),
           },
-          body: JSON.stringify({
-            trangThai: nextStatus,
-          }),
-        },
-      );
+        );
 
-      const result = await response.json();
+      const result =
+        await response.json();
 
-      if (!response.ok || !result.success) {
+      if (
+        !response.ok ||
+        !result.success
+      ) {
         throw new Error(
-          result.message || "Không thể cập nhật trạng thái",
+          result.message ||
+            "Không thể cập nhật trạng thái",
         );
       }
 
-      setStatusMember(null);
+      setStatusMember(
+        null,
+      );
 
       setMessage(
         result.message ||
-          (nextStatus === "TAM_NGUNG"
+          (nextStatus ===
+          "TAM_NGUNG"
             ? "Ngừng hoạt động Hội viên thành công"
             : "Mở lại hoạt động Hội viên thành công"),
       );
@@ -644,7 +1538,8 @@ export default function HoiVienPage() {
       await loadData();
     } catch (statusError) {
       setError(
-        statusError instanceof Error
+        statusError instanceof
+          Error
           ? statusError.message
           : "Đã xảy ra lỗi khi cập nhật trạng thái",
       );
@@ -653,54 +1548,132 @@ export default function HoiVienPage() {
     }
   }
 
+  /* =======================================================
+     REFRESH
+  ======================================================= */
+
   async function handleRefresh() {
-    setRefreshConfirmOpen(false);
+    setRefreshConfirmOpen(
+      false,
+    );
+
     setSearch("");
+
     setBranchFilter("");
+
     setStatusFilter("");
+
     clearNotice();
 
     await loadData();
 
-    setMessage("Đã làm mới danh sách Hội viên");
+    setMessage(
+      "Đã làm mới danh sách Hội viên",
+    );
   }
 
+  /* =======================================================
+     EXPORT EXCEL
+  ======================================================= */
+
   function handleExportExcel() {
-    if (filteredMembers.length === 0) {
+    if (
+      filteredMembers.length ===
+      0
+    ) {
       setMessage("");
-      setError("Không có dữ liệu để xuất Excel");
+
+      setError(
+        "Không có dữ liệu để xuất Excel",
+      );
+
       return;
     }
 
-    const rows = filteredMembers.map((member, index) => {
-      const branch = getChiHoi(member);
-      const account = getTaiKhoan(member);
+    const rows =
+      filteredMembers.map(
+        (
+          member,
+          index,
+        ) => {
+          const branch =
+            getChiHoi(member);
 
-      return {
-        STT: index + 1,
-        "Mã Hội viên": member.maHoiVien,
-        "Họ và tên": member.hoTen,
-        "Ngày sinh": formatDate(member.ngaySinh),
-        "Giới tính": formatGender(member.gioiTinh),
-        "Chi hội": branch
-          ? `${branch.maChiHoi} - ${branch.tenChiHoi}`
-          : "Chưa xác định",
-        Lớp: member.lop || "",
-        "Khóa học": member.khoaHoc || "",
-        Email: member.email || "",
-        "Số điện thoại": member.soDienThoai || "",
-        "Địa chỉ": member.diaChi || "",
-        "Tên đăng nhập": account?.username || "Chưa cấp",
-        "Xếp loại": formatRating(member.danhGia?.xepLoai),
-        "Trạng thái":
-          member.trangThai === "DANG_HOAT_DONG"
-            ? "Đang hoạt động"
-            : "Tạm ngừng",
-      };
-    });
+          const account =
+            getTaiKhoan(
+              member,
+            );
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
+          return {
+            STT: index + 1,
+
+            "Mã Hội viên":
+              member.maHoiVien,
+
+            "Họ và tên":
+              member.hoTen,
+
+            "Ngày sinh":
+              formatDate(
+                member.ngaySinh,
+              ),
+
+            "Giới tính":
+              formatGender(
+                member.gioiTinh,
+              ),
+
+            "Chi hội":
+              branch
+                ? `${branch.maChiHoi} - ${branch.tenChiHoi}`
+                : "Chưa xác định",
+
+            Lớp:
+              member.lop ||
+              "",
+
+            "Khóa học":
+              member.khoaHoc ||
+              "",
+
+            Email:
+              member.email ||
+              "",
+
+            "Số điện thoại":
+              member.soDienThoai ||
+              "",
+
+            "Địa chỉ":
+              member.diaChi ||
+              "",
+
+            "Tên đăng nhập":
+              account?.username ||
+              "Chưa cấp",
+
+            "Xếp loại":
+              formatRating(
+                member.danhGia
+                  ?.xepLoai,
+              ),
+
+            "Trạng thái":
+              member.trangThai ===
+              "DANG_HOAT_DONG"
+                ? "Đang hoạt động"
+                : "Tạm ngừng",
+          };
+        },
+      );
+
+    const worksheet =
+      XLSX.utils.json_to_sheet(
+        rows,
+      );
+
+    const workbook =
+      XLSX.utils.book_new();
 
     worksheet["!cols"] = [
       { wch: 6 },
@@ -719,22 +1692,42 @@ export default function HoiVienPage() {
       { wch: 18 },
     ];
 
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Hội viên");
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      "Hội viên",
+    );
 
     XLSX.writeFile(
       workbook,
-      `danh-sach-hoi-vien-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      `danh-sach-hoi-vien-${new Date()
+        .toISOString()
+        .slice(0, 10)}.xlsx`,
     );
 
     setError("");
-    setMessage("Xuất Excel thành công");
+
+    setMessage(
+      "Xuất Excel thành công",
+    );
   }
 
-  const resetAccount = resetMember ? getTaiKhoan(resetMember) : null;
+  const resetAccount =
+    resetMember
+      ? getTaiKhoan(
+          resetMember,
+        )
+      : null;
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
-    <main className="min-h-full bg-[#F3F6FA] px-4 py-6 font-sans sm:px-6 lg:px-8">
+    <main className="min-h-full bg-[#F3F6FA] px-3 py-5 font-sans sm:px-5 sm:py-6 lg:px-8 lg:py-8">
       <div className="mx-auto max-w-[1600px]">
+        {/* HEADER */}
+
         <header className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#12345B]">
@@ -745,32 +1738,63 @@ export default function HoiVienPage() {
               Quản lý Hội viên
             </h1>
 
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Quản lý hồ sơ, Chi hội trực thuộc, tài khoản và kết quả đánh
-              giá Hội viên.
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              {isChiHoiTruong
+                ? "Quản lý Hội viên thuộc Chi hội phụ trách và gửi đề xuất Hội viên mới lên Ban Chấp hành."
+                : "Quản lý hồ sơ, Chi hội trực thuộc, tài khoản và kết quả đánh giá Hội viên."}
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
             <button
               type="button"
-              onClick={handleExportExcel}
+              onClick={
+                handleExportExcel
+              }
               className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-emerald-600 bg-white px-5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
             >
-              <Download size={18} />
+              <Download
+                size={18}
+              />
+
               Xuất Excel
             </button>
 
-            <button
-              type="button"
-              onClick={openCreateForm}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#12345B] px-5 text-sm font-semibold text-white transition hover:bg-[#0D2947]"
-            >
-              <Plus size={18} />
-              Thêm Hội viên
-            </button>
+            {(isChiHoiTruong ||
+              canDirectManageMember) && (
+              <Link
+                href="/dashboard/hoi-vien/de-xuat"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#12345B] bg-white px-5 text-sm font-semibold text-[#12345B] transition hover:bg-blue-50"
+              >
+                <ClipboardCheck
+                  size={18}
+                />
+
+                {
+                  proposalButtonLabel
+                }
+              </Link>
+            )}
+
+            {canDirectManageMember && (
+              <button
+                type="button"
+                onClick={
+                  openCreateForm
+                }
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#12345B] px-5 text-sm font-semibold text-white transition hover:bg-[#0D2947]"
+              >
+                <Plus
+                  size={18}
+                />
+
+                Thêm Hội viên
+              </button>
+            )}
           </div>
         </header>
+
+        {/* NOTICE */}
 
         {message && (
           <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
@@ -784,118 +1808,243 @@ export default function HoiVienPage() {
           </div>
         )}
 
-        <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* STATISTICS */}
+
+        <section className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
           <StatCard
             label="Tổng Hội viên"
-            value={statistics.total}
-            icon={<Users size={23} />}
+            value={
+              statistics.total
+            }
+            icon={
+              <Users
+                size={23}
+              />
+            }
             iconClass="bg-blue-50 text-[#12345B]"
           />
 
           <StatCard
             label="Đang hoạt động"
-            value={statistics.active}
-            icon={<UserCheck size={23} />}
+            value={
+              statistics.active
+            }
+            icon={
+              <UserCheck
+                size={23}
+              />
+            }
             iconClass="bg-emerald-50 text-emerald-700"
           />
 
           <StatCard
             label="Đã cấp tài khoản"
-            value={statistics.accounts}
-            icon={<KeyRound size={23} />}
+            value={
+              statistics.accounts
+            }
+            icon={
+              <KeyRound
+                size={23}
+              />
+            }
             iconClass="bg-amber-50 text-amber-700"
           />
 
           <StatCard
             label="Đã đánh giá"
-            value={statistics.ratings}
-            icon={<Award size={23} />}
+            value={
+              statistics.ratings
+            }
+            icon={
+              <Award
+                size={23}
+              />
+            }
             iconClass="bg-violet-50 text-violet-700"
           />
         </section>
 
+        {/* FILTERS + LIST */}
+
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="grid grid-cols-1 gap-3 border-b border-slate-200 p-4 xl:grid-cols-[minmax(300px,1fr)_250px_210px_auto]">
+          <div
+            className={`grid grid-cols-1 gap-3 border-b border-slate-200 p-4 ${
+              isChiHoiTruong
+                ? "xl:grid-cols-[minmax(300px,1fr)_210px_auto]"
+                : "xl:grid-cols-[minmax(300px,1fr)_250px_210px_auto]"
+            }`}
+          >
             <div className="relative">
               <Search
                 size={18}
                 className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
               />
 
               <input
                 type="search"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="control pr-10 ml-0.5"
+                onChange={(
+                  event,
+                ) =>
+                  setSearch(
+                    event.target
+                      .value,
+                  )
+                }
+                className="control pr-10"
                 style={{
-                  paddingLeft: "48px",
+                  paddingLeft:
+                    "48px",
                 }}
-                placeholder="Tìm theo mã, họ tên, email hoặc số điện thoại"
-                aria-label="Tìm kiếm Hội viên"
+                placeholder="Tìm mã, họ tên, email, số điện thoại..."
               />
 
               {search && (
                 <button
                   type="button"
-                  onClick={() => setSearch("")}
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                  title="Xóa nội dung tìm kiếm"
-                  aria-label="Xóa nội dung tìm kiếm"
+                  onClick={() =>
+                    setSearch("")
+                  }
+                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100"
                 >
-                  <X size={16} />
+                  <X
+                    size={16}
+                  />
                 </button>
               )}
             </div>
 
-            <select
-              value={branchFilter}
-              onChange={(event) => setBranchFilter(event.target.value)}
-              className="control"
-            >
-              <option value="">Tất cả Chi hội</option>
-
-              {branches.map((branch) => (
-                <option key={branch._id} value={branch._id}>
-                  {branch.maChiHoi} - {branch.tenChiHoi}
+            {!isChiHoiTruong && (
+              <select
+                value={
+                  branchFilter
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setBranchFilter(
+                    event.target
+                      .value,
+                  )
+                }
+                className="control"
+              >
+                <option value="">
+                  Tất cả Chi hội
                 </option>
-              ))}
-            </select>
+
+                {branches.map(
+                  (branch) => (
+                    <option
+                      key={
+                        branch._id
+                      }
+                      value={
+                        branch._id
+                      }
+                    >
+                      {
+                        branch.maChiHoi
+                      }{" "}
+                      -{" "}
+                      {
+                        branch.tenChiHoi
+                      }
+                    </option>
+                  ),
+                )}
+              </select>
+            )}
 
             <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
+              value={
+                statusFilter
+              }
+              onChange={(
+                event,
+              ) =>
+                setStatusFilter(
+                  event.target
+                    .value,
+                )
+              }
               className="control"
             >
-              <option value="">Tất cả trạng thái</option>
-              <option value="DANG_HOAT_DONG">Đang hoạt động</option>
-              <option value="TAM_NGUNG">Tạm ngừng</option>
+              <option value="">
+                Tất cả trạng thái
+              </option>
+
+              <option value="DANG_HOAT_DONG">
+                Đang hoạt động
+              </option>
+
+              <option value="TAM_NGUNG">
+                Tạm ngừng
+              </option>
             </select>
 
             <button
               type="button"
-              onClick={() => setRefreshConfirmOpen(true)}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              onClick={() =>
+                setRefreshConfirmOpen(
+                  true,
+                )
+              }
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              <RefreshCw size={18} />
+              <RefreshCw
+                size={18}
+              />
+
               Làm mới
             </button>
           </div>
+
+          {/* DESKTOP TABLE */}
 
           <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[1380px]">
               <thead className="bg-slate-50">
                 <tr className="text-left text-xs font-bold uppercase text-slate-600">
-                  <th className="px-5 py-4">STT</th>
-                  <th className="px-5 py-4">Mã Hội viên</th>
-                  <th className="px-5 py-4">Họ và tên</th>
-                  <th className="px-5 py-4">Chi hội</th>
-                  <th className="px-5 py-4">Lớp</th>
-                  <th className="px-5 py-4">Liên hệ</th>
-                  <th className="px-5 py-4">Tài khoản</th>
-                  <th className="px-5 py-4">Xếp loại</th>
-                  <th className="px-5 py-4">Trạng thái</th>
-                  <th className="px-5 py-4 text-right">Thao tác</th>
+                  <th className="px-5 py-4">
+                    STT
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Mã Hội viên
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Họ và tên
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Chi hội
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Lớp
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Liên hệ
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Tài khoản
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Xếp loại
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Trạng thái
+                  </th>
+
+                  <th className="px-5 py-4 text-right">
+                    Thao tác
+                  </th>
                 </tr>
               </thead>
 
@@ -909,7 +2058,8 @@ export default function HoiVienPage() {
                       Đang tải danh sách Hội viên...
                     </td>
                   </tr>
-                ) : filteredMembers.length === 0 ? (
+                ) : filteredMembers.length ===
+                  0 ? (
                   <tr>
                     <td
                       colSpan={10}
@@ -919,287 +2069,566 @@ export default function HoiVienPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredMembers.map((member, index) => {
-                    const branch = getChiHoi(member);
-                    const account = getTaiKhoan(member);
+                  filteredMembers.map(
+                    (
+                      member,
+                      index,
+                    ) => {
+                      const branch =
+                        getChiHoi(
+                          member,
+                        );
 
-                    return (
-                      <tr
-                        key={member._id}
-                        className="text-sm text-slate-700 transition hover:bg-slate-50"
-                      >
-                        <td className="px-5 py-4">{index + 1}</td>
+                      const account =
+                        getTaiKhoan(
+                          member,
+                        );
 
-                        <td className="px-5 py-4">
-                          <span className="rounded-md bg-blue-50 px-2.5 py-1 font-semibold text-[#12345B]">
-                            {member.maHoiVien}
-                          </span>
-                        </td>
+                      return (
+                        <tr
+                          key={
+                            member._id
+                          }
+                          className="text-sm text-slate-700 hover:bg-slate-50"
+                        >
+                          <td className="px-5 py-4">
+                            {index +
+                              1}
+                          </td>
 
-                        <td className="px-5 py-4">
-                          <p className="font-semibold text-slate-900">
-                            {member.hoTen}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {formatGender(member.gioiTinh)}
-                          </p>
-                        </td>
+                          <td className="px-5 py-4">
+                            <span className="rounded-md bg-blue-50 px-2.5 py-1 font-semibold text-[#12345B]">
+                              {
+                                member.maHoiVien
+                              }
+                            </span>
+                          </td>
 
-                        <td className="px-5 py-4">
-                          {branch
-                            ? `${branch.maChiHoi} - ${branch.tenChiHoi}`
-                            : "Chưa xác định"}
-                        </td>
+                          <td className="px-5 py-4">
+                            <p className="font-semibold text-slate-900">
+                              {
+                                member.hoTen
+                              }
+                            </p>
 
-                        <td className="px-5 py-4">{member.lop || "—"}</td>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {formatGender(
+                                member.gioiTinh,
+                              )}
+                            </p>
+                          </td>
 
-                        <td className="px-5 py-4">
-                          <p>{member.soDienThoai || "—"}</p>
-                          <p className="mt-1 max-w-[200px] truncate text-xs text-slate-500">
-                            {member.email || "—"}
-                          </p>
-                        </td>
+                          <td className="px-5 py-4">
+                            {branch
+                              ? `${branch.maChiHoi} - ${branch.tenChiHoi}`
+                              : "Chưa xác định"}
+                          </td>
 
-                        <td className="px-5 py-4">
-                          {account ? (
-                            <>
-                              <p className="font-medium text-slate-900">
-                                {account.username}
-                              </p>
-                              <p className="mt-1 text-xs text-emerald-600">
-                                Đã cấp
-                              </p>
-                            </>
-                          ) : (
-                            <span className="text-slate-500">Chưa cấp</span>
-                          )}
-                        </td>
+                          <td className="px-5 py-4">
+                            {member.lop ||
+                              "—"}
+                          </td>
 
-                        <td className="px-5 py-4">
-                          <RatingBadge value={member.danhGia?.xepLoai} />
-                        </td>
+                          <td className="px-5 py-4">
+                            <p>
+                              {member.soDienThoai ||
+                                "—"}
+                            </p>
 
-                        <td className="px-5 py-4">
-                          <StatusBadge value={member.trangThai} />
-                        </td>
+                            <p className="mt-1 max-w-[210px] truncate text-xs text-slate-500">
+                              {member.email ||
+                                "—"}
+                            </p>
+                          </td>
 
-                        <td className="px-5 py-4">
-                          <div className="flex items-center justify-end gap-1.5">
+                          <td className="px-5 py-4">
                             {account ? (
-                              <button
-                                type="button"
-                                onClick={() => openResetPassword(member)}
-                                className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#12345B] bg-white px-3 text-xs font-semibold text-[#12345B] transition hover:bg-blue-50"
-                                title="Đặt lại mật khẩu"
-                              >
-                                <KeyRound size={16} />
-                                Đặt lại MK
-                              </button>
+                              <>
+                                <p className="font-medium text-slate-900">
+                                  {
+                                    account.username
+                                  }
+                                </p>
+
+                                <p className="mt-1 text-xs text-emerald-600">
+                                  Đã cấp
+                                </p>
+                              </>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => openCreateAccount(member)}
-                                className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-500 bg-white px-3 text-xs font-semibold text-amber-700 transition hover:bg-amber-50"
-                                title="Cấp tài khoản"
-                              >
-                                <KeyRound size={16} />
-                                Cấp tài khoản
-                              </button>
+                              <span className="text-slate-500">
+                                Chưa cấp
+                              </span>
                             )}
+                          </td>
 
-                            <IconButton
-                              title="Đánh giá Hội viên"
-                              onClick={() => openRating(member)}
-                            >
-                              <Award size={17} />
-                            </IconButton>
-
-                            <IconButton
-                              title="Xem chi tiết"
-                              onClick={() => setViewMember(member)}
-                            >
-                              <Eye size={17} />
-                            </IconButton>
-
-                            <IconButton
-                              title="Chỉnh sửa"
-                              onClick={() => openEditForm(member)}
-                            >
-                              <Pencil size={17} />
-                            </IconButton>
-
-                            <IconButton
-                              title={
-                                member.trangThai === "DANG_HOAT_DONG"
-                                  ? "Ngừng hoạt động"
-                                  : "Kích hoạt lại"
+                          <td className="px-5 py-4">
+                            <RatingBadge
+                              value={
+                                member
+                                  .danhGia
+                                  ?.xepLoai
                               }
-                              onClick={() => setStatusMember(member)}
-                              danger={
-                                member.trangThai === "DANG_HOAT_DONG"
-                              }
-                            >
-                              <Power size={17} />
-                            </IconButton>
+                            />
+                          </td>
 
-                            <IconButton
-                              title="Xóa Hội viên"
-                              onClick={() => setDeleteMember(member)}
-                              danger
-                            >
-                              <Trash2 size={17} />
-                            </IconButton>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
+                          <td className="px-5 py-4">
+                            <StatusBadge
+                              value={
+                                member.trangThai
+                              }
+                            />
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {canDirectManageMember &&
+                                (account ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openResetPassword(
+                                        member,
+                                      )
+                                    }
+                                    className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#12345B] bg-white px-3 text-xs font-semibold text-[#12345B] hover:bg-blue-50"
+                                  >
+                                    <KeyRound
+                                      size={
+                                        16
+                                      }
+                                    />
+
+                                    Đặt lại MK
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openCreateAccount(
+                                        member,
+                                      )
+                                    }
+                                    className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-500 bg-white px-3 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+                                  >
+                                    <KeyRound
+                                      size={
+                                        16
+                                      }
+                                    />
+
+                                    Cấp tài khoản
+                                  </button>
+                                ))}
+
+                              {canRateMember && (
+                                <IconButton
+                                  title="Đánh giá Hội viên"
+                                  onClick={() =>
+                                    openRating(
+                                      member,
+                                    )
+                                  }
+                                >
+                                  <Award
+                                    size={
+                                      17
+                                    }
+                                  />
+                                </IconButton>
+                              )}
+
+                              <IconButton
+                                title="Xem chi tiết"
+                                onClick={() =>
+                                  setViewMember(
+                                    member,
+                                  )
+                                }
+                              >
+                                <Eye
+                                  size={
+                                    17
+                                  }
+                                />
+                              </IconButton>
+
+                              {canEditMember && (
+                                <IconButton
+                                  title="Chỉnh sửa"
+                                  onClick={() =>
+                                    openEditForm(
+                                      member,
+                                    )
+                                  }
+                                >
+                                  <Pencil
+                                    size={
+                                      17
+                                    }
+                                  />
+                                </IconButton>
+                              )}
+
+                              {canDirectManageMember && (
+                                <>
+                                  <IconButton
+                                    title={
+                                      member.trangThai ===
+                                      "DANG_HOAT_DONG"
+                                        ? "Ngừng hoạt động"
+                                        : "Kích hoạt lại"
+                                    }
+                                    onClick={() =>
+                                      setStatusMember(
+                                        member,
+                                      )
+                                    }
+                                    danger={
+                                      member.trangThai ===
+                                      "DANG_HOAT_DONG"
+                                    }
+                                  >
+                                    <Power
+                                      size={
+                                        17
+                                      }
+                                    />
+                                  </IconButton>
+
+                                  <IconButton
+                                    title="Xóa Hội viên"
+                                    onClick={() =>
+                                      setDeleteMember(
+                                        member,
+                                      )
+                                    }
+                                    danger
+                                  >
+                                    <Trash2
+                                      size={
+                                        17
+                                      }
+                                    />
+                                  </IconButton>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    },
+                  )
                 )}
               </tbody>
             </table>
           </div>
+
+          {/* MOBILE */}
 
           <div className="divide-y divide-slate-200 lg:hidden">
             {loading ? (
               <p className="p-10 text-center text-sm text-slate-500">
                 Đang tải danh sách Hội viên...
               </p>
-            ) : filteredMembers.length === 0 ? (
+            ) : filteredMembers.length ===
+              0 ? (
               <p className="p-10 text-center text-sm text-slate-500">
                 Chưa tìm thấy Hội viên phù hợp.
               </p>
             ) : (
-              filteredMembers.map((member) => {
-                const branch = getChiHoi(member);
-                const account = getTaiKhoan(member);
+              filteredMembers.map(
+                (member) => {
+                  const branch =
+                    getChiHoi(
+                      member,
+                    );
 
-                return (
-                  <article key={member._id} className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-[#12345B]">
-                          {member.maHoiVien}
-                        </span>
+                  const account =
+                    getTaiKhoan(
+                      member,
+                    );
 
-                        <h2 className="mt-3 font-semibold text-slate-900">
-                          {member.hoTen}
-                        </h2>
+                  return (
+                    <article
+                      key={
+                        member._id
+                      }
+                      className="p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-[#12345B]">
+                            {
+                              member.maHoiVien
+                            }
+                          </span>
+
+                          <h2 className="mt-3 font-semibold text-slate-900">
+                            {
+                              member.hoTen
+                            }
+                          </h2>
+                        </div>
+
+                        <StatusBadge
+                          value={
+                            member.trangThai
+                          }
+                        />
                       </div>
 
-                      <StatusBadge value={member.trangThai} />
-                    </div>
+                      <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Info
+                          label="Chi hội"
+                          value={
+                            branch
+                              ? `${branch.maChiHoi} - ${branch.tenChiHoi}`
+                              : "Chưa xác định"
+                          }
+                        />
 
-                    <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Info
-                        label="Chi hội"
-                        value={
-                          branch
-                            ? `${branch.maChiHoi} - ${branch.tenChiHoi}`
-                            : "Chưa xác định"
-                        }
-                      />
-                      <Info label="Lớp" value={member.lop || "—"} />
-                      <Info
-                        label="Số điện thoại"
-                        value={member.soDienThoai || "—"}
-                      />
-                      <Info
-                        label="Tài khoản"
-                        value={account?.username || "Chưa cấp"}
-                      />
-                    </dl>
+                        <Info
+                          label="Lớp"
+                          value={
+                            member.lop ||
+                            "—"
+                          }
+                        />
 
-                    <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-                      {account ? (
+                        <Info
+                          label="Số điện thoại"
+                          value={
+                            member.soDienThoai ||
+                            "—"
+                          }
+                        />
+
+                        <Info
+                          label="Tài khoản"
+                          value={
+                            account?.username ||
+                            "Chưa cấp"
+                          }
+                        />
+                      </dl>
+
+                      <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                        {canDirectManageMember &&
+                          (account ? (
+                            <MobileButton
+                              onClick={() =>
+                                openResetPassword(
+                                  member,
+                                )
+                              }
+                            >
+                              <KeyRound
+                                size={
+                                  16
+                                }
+                              />
+
+                              Đặt lại mật khẩu
+                            </MobileButton>
+                          ) : (
+                            <MobileButton
+                              onClick={() =>
+                                openCreateAccount(
+                                  member,
+                                )
+                              }
+                            >
+                              <KeyRound
+                                size={
+                                  16
+                                }
+                              />
+
+                              Cấp tài khoản
+                            </MobileButton>
+                          ))}
+
+                        {canRateMember && (
+                          <MobileButton
+                            onClick={() =>
+                              openRating(
+                                member,
+                              )
+                            }
+                          >
+                            <Award
+                              size={
+                                16
+                              }
+                            />
+
+                            Đánh giá
+                          </MobileButton>
+                        )}
+
                         <MobileButton
-                          onClick={() => openResetPassword(member)}
+                          onClick={() =>
+                            setViewMember(
+                              member,
+                            )
+                          }
                         >
-                          <KeyRound size={16} />
-                          Đặt lại mật khẩu
+                          <Eye
+                            size={
+                              16
+                            }
+                          />
+
+                          Xem
                         </MobileButton>
-                      ) : (
-                        <MobileButton
-                          onClick={() => openCreateAccount(member)}
-                        >
-                          <KeyRound size={16} />
-                          Cấp tài khoản
-                        </MobileButton>
-                      )}
 
-                      <MobileButton onClick={() => openRating(member)}>
-                        <Award size={16} />
-                        Đánh giá
-                      </MobileButton>
+                        {canEditMember && (
+                          <MobileButton
+                            onClick={() =>
+                              openEditForm(
+                                member,
+                              )
+                            }
+                          >
+                            <Pencil
+                              size={
+                                16
+                              }
+                            />
 
-                      <MobileButton onClick={() => setViewMember(member)}>
-                        <Eye size={16} />
-                        Xem
-                      </MobileButton>
+                            Sửa
+                          </MobileButton>
+                        )}
 
-                      <MobileButton onClick={() => openEditForm(member)}>
-                        <Pencil size={16} />
-                        Sửa
-                      </MobileButton>
+                        {canDirectManageMember && (
+                          <>
+                            <MobileButton
+                              onClick={() =>
+                                setStatusMember(
+                                  member,
+                                )
+                              }
+                              danger={
+                                member.trangThai ===
+                                "DANG_HOAT_DONG"
+                              }
+                            >
+                              <Power
+                                size={
+                                  16
+                                }
+                              />
 
-                      <MobileButton
-                        onClick={() => setStatusMember(member)}
-                        danger={member.trangThai === "DANG_HOAT_DONG"}
-                      >
-                        <Power size={16} />
-                        {member.trangThai === "DANG_HOAT_DONG"
-                          ? "Ngừng"
-                          : "Kích hoạt"}
-                      </MobileButton>
+                              {member.trangThai ===
+                              "DANG_HOAT_DONG"
+                                ? "Ngừng"
+                                : "Kích hoạt"}
+                            </MobileButton>
 
-                      <MobileButton
-                        onClick={() => setDeleteMember(member)}
-                        danger
-                      >
-                        <Trash2 size={16} />
-                        Xóa
-                      </MobileButton>
-                    </div>
-                  </article>
-                );
-              })
+                            <MobileButton
+                              onClick={() =>
+                                setDeleteMember(
+                                  member,
+                                )
+                              }
+                              danger
+                            >
+                              <Trash2
+                                size={
+                                  16
+                                }
+                              />
+
+                              Xóa
+                            </MobileButton>
+                          </>
+                        )}
+                      </div>
+                    </article>
+                  );
+                },
+              )
             )}
           </div>
         </section>
       </div>
 
+      {/* ===================================================
+          CREATE / EDIT
+      =================================================== */}
+
       {formOpen && (
         <Modal
-          title={editingMember ? "Cập nhật Hội viên" : "Thêm Hội viên"}
-          description="Vui lòng nhập đầy đủ và chính xác thông tin Hội viên."
+          title={
+            editingMember
+              ? "Cập nhật Hội viên"
+              : "Thêm Hội viên"
+          }
+          description={
+            isChiHoiTruong
+              ? "Chi hội trưởng chỉ được cập nhật Hội viên thuộc Chi hội phụ trách."
+              : "Vui lòng nhập đầy đủ và chính xác thông tin Hội viên."
+          }
           onClose={() => {
-            if (!submitting) setFormOpen(false);
+            if (
+              !submitting
+            ) {
+              setFormOpen(
+                false,
+              );
+            }
           }}
         >
-          <form onSubmit={handleSaveMember}>
+          <form
+            onSubmit={
+              handleSaveMember
+            }
+          >
             <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 sm:p-6">
-              <Field label="Mã Hội viên" required>
+              <Field
+                label="Mã Hội viên"
+                required
+              >
                 <input
                   required
-                  value={form.maHoiVien}
-                  onChange={(event) =>
+                  value={
+                    form.maHoiVien
+                  }
+                  disabled={
+                    isChiHoiTruong
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setForm({
                       ...form,
-                      maHoiVien: event.target.value.toUpperCase(),
+
+                      maHoiVien:
+                        event.target.value.toUpperCase(),
                     })
                   }
-                  className="control"
+                  className="control disabled:cursor-not-allowed disabled:bg-slate-100"
                   placeholder="Ví dụ: HV001"
                 />
               </Field>
 
-              <Field label="Họ và tên" required>
+              <Field
+                label="Họ và tên"
+                required
+              >
                 <input
                   required
-                  value={form.hoTen}
-                  onChange={(event) =>
+                  value={
+                    form.hoTen
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setForm({
                       ...form,
-                      hoTen: event.target.value,
+
+                      hoTen:
+                        event.target.value,
                     })
                   }
                   className="control"
@@ -1210,11 +2639,17 @@ export default function HoiVienPage() {
               <Field label="Ngày sinh">
                 <input
                   type="date"
-                  value={form.ngaySinh}
-                  onChange={(event) =>
+                  value={
+                    form.ngaySinh
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setForm({
                       ...form,
-                      ngaySinh: event.target.value,
+
+                      ngaySinh:
+                        event.target.value,
                     })
                   }
                   className="control"
@@ -1223,50 +2658,121 @@ export default function HoiVienPage() {
 
               <Field label="Giới tính">
                 <select
-                  value={form.gioiTinh}
-                  onChange={(event) =>
+                  value={
+                    form.gioiTinh
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setForm({
                       ...form,
-                      gioiTinh: event.target.value as GioiTinh,
+
+                      gioiTinh:
+                        event.target
+                          .value as GioiTinh,
                     })
                   }
                   className="control"
                 >
-                  <option value="NAM">Nam</option>
-                  <option value="NU">Nữ</option>
-                  <option value="KHAC">Khác</option>
+                  <option value="NAM">
+                    Nam
+                  </option>
+
+                  <option value="NU">
+                    Nữ
+                  </option>
+
+                  <option value="KHAC">
+                    Khác
+                  </option>
                 </select>
               </Field>
 
-              <Field label="Chi hội" required>
+              <Field
+                label="Chi hội"
+                required
+              >
                 <select
                   required
-                  value={form.chiHoiId}
-                  onChange={(event) =>
+                  disabled={
+                    isChiHoiTruong
+                  }
+                  value={
+                    form.chiHoiId
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setForm({
                       ...form,
-                      chiHoiId: event.target.value,
+
+                      chiHoiId:
+                        event.target.value,
                     })
                   }
-                  className="control"
+                  className="control disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                 >
-                  <option value="">Chọn Chi hội</option>
+                  <option value="">
+                    Chọn Chi hội
+                  </option>
 
-                  {branches.map((branch) => (
-                    <option key={branch._id} value={branch._id}>
-                      {branch.maChiHoi} - {branch.tenChiHoi}
-                    </option>
-                  ))}
+                  {branches.map(
+                    (branch) => (
+                      <option
+                        key={
+                          branch._id
+                        }
+                        value={
+                          branch._id
+                        }
+                      >
+                        {
+                          branch.maChiHoi
+                        }{" "}
+                        -{" "}
+                        {
+                          branch.tenChiHoi
+                        }
+                      </option>
+                    ),
+                  )}
+
+                  {/*
+                    Nếu CHT đang sửa Hội viên
+                    nhưng branches chưa có,
+                    vẫn giữ được Chi hội hiện tại.
+                  */}
+                  {isChiHoiTruong &&
+                    form.chiHoiId &&
+                    !branches.some(
+                      (branch) =>
+                        branch._id ===
+                        form.chiHoiId,
+                    ) && (
+                      <option
+                        value={
+                          form.chiHoiId
+                        }
+                      >
+                        Chi hội hiện tại
+                      </option>
+                    )}
                 </select>
               </Field>
 
               <Field label="Lớp">
                 <input
-                  value={form.lop}
-                  onChange={(event) =>
+                  value={
+                    form.lop
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setForm({
                       ...form,
-                      lop: event.target.value,
+
+                      lop:
+                        event.target.value,
                     })
                   }
                   className="control"
@@ -1276,40 +2782,75 @@ export default function HoiVienPage() {
 
               <Field label="Khóa học">
                 <input
-                  value={form.khoaHoc}
-                  onChange={(event) =>
+                  value={
+                    form.khoaHoc
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setForm({
                       ...form,
-                      khoaHoc: event.target.value,
+
+                      khoaHoc:
+                        event.target.value,
                     })
                   }
                   className="control"
-                  placeholder="Ví dụ: 2021-2025"
+                  placeholder="Ví dụ: 2023 - 2027"
                 />
               </Field>
 
               <Field label="Số điện thoại">
                 <input
-                  value={form.soDienThoai}
-                  onChange={(event) =>
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={
+                    form.soDienThoai
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setForm({
                       ...form,
-                      soDienThoai: event.target.value,
+
+                      soDienThoai:
+                        event.target.value
+                          .replace(
+                            /\D/g,
+                            "",
+                          )
+                          .slice(
+                            0,
+                            10,
+                          ),
                     })
                   }
                   className="control"
-                  placeholder="Nhập số điện thoại"
+                  placeholder="Ví dụ: 0912345678"
                 />
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Số điện thoại gồm
+                  10 chữ số và bắt
+                  đầu bằng 0.
+                </p>
               </Field>
 
               <Field label="Email">
                 <input
                   type="email"
-                  value={form.email}
-                  onChange={(event) =>
+                  value={
+                    form.email
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setForm({
                       ...form,
-                      email: event.target.value,
+
+                      email:
+                        event.target.value,
                     })
                   }
                   className="control"
@@ -1317,30 +2858,50 @@ export default function HoiVienPage() {
                 />
               </Field>
 
-              <Field label="Trạng thái">
-                <select
-                  value={form.trangThai}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      trangThai: event.target.value as TrangThaiHoiVien,
-                    })
-                  }
-                  className="control"
-                >
-                  <option value="DANG_HOAT_DONG">Đang hoạt động</option>
-                  <option value="TAM_NGUNG">Tạm ngừng</option>
-                </select>
-              </Field>
+              {canDirectManageMember && (
+                <Field label="Trạng thái">
+                  <select
+                    value={
+                      form.trangThai
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      setForm({
+                        ...form,
+
+                        trangThai:
+                          event.target
+                            .value as TrangThaiHoiVien,
+                      })
+                    }
+                    className="control"
+                  >
+                    <option value="DANG_HOAT_DONG">
+                      Đang hoạt động
+                    </option>
+
+                    <option value="TAM_NGUNG">
+                      Tạm ngừng
+                    </option>
+                  </select>
+                </Field>
+              )}
 
               <div className="sm:col-span-2">
                 <Field label="Địa chỉ">
                   <textarea
-                    value={form.diaChi}
-                    onChange={(event) =>
+                    value={
+                      form.diaChi
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setForm({
                         ...form,
-                        diaChi: event.target.value,
+
+                        diaChi:
+                          event.target.value,
                       })
                     }
                     className="control min-h-24 resize-y py-3"
@@ -1351,76 +2912,172 @@ export default function HoiVienPage() {
             </div>
 
             <ModalFooter
-              submitting={submitting}
-              submitText={
-                editingMember ? "Lưu thay đổi" : "Thêm Hội viên"
+              submitting={
+                submitting
               }
-              onCancel={() => setFormOpen(false)}
+              submitText={
+                editingMember
+                  ? "Lưu thay đổi"
+                  : "Thêm Hội viên"
+              }
+              onCancel={() =>
+                setFormOpen(
+                  false,
+                )
+              }
             />
           </form>
         </Modal>
       )}
 
+      {/* ===================================================
+          VIEW DETAIL
+      =================================================== */}
+
       {viewMember && (
         <Modal
           title="Thông tin Hội viên"
           description={`${viewMember.maHoiVien} - ${viewMember.hoTen}`}
-          onClose={() => setViewMember(null)}
+          onClose={() =>
+            setViewMember(
+              null,
+            )
+          }
         >
           <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 sm:p-6">
-            <Info label="Mã Hội viên" value={viewMember.maHoiVien} />
-            <Info label="Họ và tên" value={viewMember.hoTen} />
+            <Info
+              label="Mã Hội viên"
+              value={
+                viewMember.maHoiVien
+              }
+            />
+
+            <Info
+              label="Họ và tên"
+              value={
+                viewMember.hoTen
+              }
+            />
+
             <Info
               label="Ngày sinh"
-              value={formatDate(viewMember.ngaySinh)}
+              value={formatDate(
+                viewMember.ngaySinh,
+              )}
             />
+
             <Info
               label="Giới tính"
-              value={formatGender(viewMember.gioiTinh)}
+              value={formatGender(
+                viewMember.gioiTinh,
+              )}
             />
+
             <Info
               label="Chi hội"
               value={
-                getChiHoi(viewMember)
-                  ? `${getChiHoi(viewMember)?.maChiHoi} - ${
-                      getChiHoi(viewMember)?.tenChiHoi
-                    }`
+                getChiHoi(
+                  viewMember,
+                )
+                  ? `${getChiHoi(viewMember)?.maChiHoi} - ${getChiHoi(viewMember)?.tenChiHoi}`
                   : "Chưa xác định"
               }
             />
-            <Info label="Lớp" value={viewMember.lop || "—"} />
-            <Info label="Khóa học" value={viewMember.khoaHoc || "—"} />
+
+            <Info
+              label="Lớp"
+              value={
+                viewMember.lop ||
+                "—"
+              }
+            />
+
+            <Info
+              label="Khóa học"
+              value={
+                viewMember.khoaHoc ||
+                "—"
+              }
+            />
+
             <Info
               label="Số điện thoại"
-              value={viewMember.soDienThoai || "—"}
+              value={
+                viewMember.soDienThoai ||
+                "—"
+              }
             />
-            <Info label="Email" value={viewMember.email || "—"} />
+
+            <Info
+              label="Email"
+              value={
+                viewMember.email ||
+                "—"
+              }
+            />
+
             <Info
               label="Tài khoản"
-              value={getTaiKhoan(viewMember)?.username || "Chưa cấp"}
+              value={
+                getTaiKhoan(
+                  viewMember,
+                )?.username ||
+                "Chưa cấp"
+              }
             />
+
             <Info
               label="Xếp loại"
-              value={formatRating(viewMember.danhGia?.xepLoai)}
+              value={formatRating(
+                viewMember.danhGia
+                  ?.xepLoai,
+              )}
             />
+
             <Info
               label="Trạng thái"
               value={
-                viewMember.trangThai === "DANG_HOAT_DONG"
+                viewMember.trangThai ===
+                "DANG_HOAT_DONG"
                   ? "Đang hoạt động"
                   : "Tạm ngừng"
               }
             />
 
             <div className="sm:col-span-2">
-              <Info label="Địa chỉ" value={viewMember.diaChi || "—"} />
+              <Info
+                label="Địa chỉ"
+                value={
+                  viewMember.diaChi ||
+                  "—"
+                }
+              />
             </div>
+
+            {viewMember
+              .danhGia
+              ?.nhanXet && (
+              <div className="sm:col-span-2">
+                <Info
+                  label="Nhận xét đánh giá"
+                  value={
+                    viewMember
+                      .danhGia
+                      .nhanXet
+                  }
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end border-t border-slate-200 p-4 sm:px-6">
             <button
               type="button"
-              onClick={() => setViewMember(null)}
+              onClick={() =>
+                setViewMember(
+                  null,
+                )
+              }
               className="h-11 rounded-lg border border-slate-300 bg-white px-5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Đóng
@@ -1429,44 +3086,90 @@ export default function HoiVienPage() {
         </Modal>
       )}
 
+      {/* ===================================================
+          RATING
+      =================================================== */}
+
       {ratingMember && (
         <Modal
           title="Đánh giá Hội viên"
           description={`${ratingMember.maHoiVien} - ${ratingMember.hoTen}`}
           maxWidth="max-w-xl"
           onClose={() => {
-            if (!submitting) setRatingMember(null);
+            if (
+              !submitting
+            ) {
+              setRatingMember(
+                null,
+              );
+            }
           }}
         >
-          <form onSubmit={handleSaveRating}>
+          <form
+            onSubmit={
+              handleSaveRating
+            }
+          >
             <div className="space-y-4 p-5 sm:p-6">
-              <Field label="Xếp loại" required>
+              <Field
+                label="Xếp loại"
+                required
+              >
                 <select
-                  value={ratingForm.xepLoai}
-                  onChange={(event) =>
+                  value={
+                    ratingForm.xepLoai
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setRatingForm({
                       ...ratingForm,
-                      xepLoai: event.target.value as XepLoai,
+
+                      xepLoai:
+                        event.target
+                          .value as XepLoai,
                     })
                   }
                   className="control"
                 >
-                  <option value="XUAT_SAC">Xuất sắc</option>
-                  <option value="TOT">Tốt</option>
-                  <option value="KHA">Khá</option>
-                  <option value="TRUNG_BINH">Trung bình</option>
-                  <option value="YEU">Yếu</option>
+                  <option value="XUAT_SAC">
+                    Xuất sắc
+                  </option>
+
+                  <option value="TOT">
+                    Tốt
+                  </option>
+
+                  <option value="KHA">
+                    Khá
+                  </option>
+
+                  <option value="TRUNG_BINH">
+                    Trung bình
+                  </option>
+
+                  <option value="YEU">
+                    Yếu
+                  </option>
                 </select>
               </Field>
 
               <Field label="Nhận xét">
                 <textarea
-                  maxLength={1000}
-                  value={ratingForm.nhanXet}
-                  onChange={(event) =>
+                  maxLength={
+                    1000
+                  }
+                  value={
+                    ratingForm.nhanXet
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setRatingForm({
                       ...ratingForm,
-                      nhanXet: event.target.value,
+
+                      nhanXet:
+                        event.target.value,
                     })
                   }
                   className="control min-h-36 resize-y py-3"
@@ -1474,187 +3177,371 @@ export default function HoiVienPage() {
                 />
 
                 <p className="mt-1 text-right text-xs text-slate-500">
-                  {ratingForm.nhanXet.length}/1000
+                  {
+                    ratingForm
+                      .nhanXet
+                      .length
+                  }
+                  /1000
                 </p>
               </Field>
+
+              {isChiHoiTruong && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm leading-6 text-blue-700">
+                  Đây là đánh giá của
+                  Chi hội trưởng. Luồng
+                  đề xuất/phê duyệt đánh
+                  giá sẽ được hoàn thiện
+                  ở module đánh giá.
+                </div>
+              )}
             </div>
 
             <ModalFooter
-              submitting={submitting}
+              submitting={
+                submitting
+              }
               submitText="Lưu đánh giá"
-              onCancel={() => setRatingMember(null)}
+              onCancel={() =>
+                setRatingMember(
+                  null,
+                )
+              }
             />
           </form>
         </Modal>
       )}
 
-      {accountMember && (
-        <Modal
-          title="Cấp tài khoản Hội viên"
-          description={`${accountMember.maHoiVien} - ${accountMember.hoTen}`}
-          maxWidth="max-w-xl"
-          onClose={() => {
-            if (!submitting) setAccountMember(null);
-          }}
-        >
-          <form onSubmit={handleCreateAccount}>
-            <div className="space-y-4 p-5 sm:p-6">
-              <Field label="Tên đăng nhập" required>
-                <input
-                  required
-                  value={accountForm.username}
-                  onChange={(event) =>
-                    setAccountForm({
-                      ...accountForm,
-                      username: event.target.value,
-                    })
-                  }
-                  className="control"
-                  placeholder="Nhập tên đăng nhập"
-                  autoComplete="username"
-                />
-              </Field>
+      {/* ===================================================
+          ACCOUNT
+      =================================================== */}
 
-              <Field label="Mật khẩu" required>
-                <div className="relative">
+      {accountMember &&
+        canDirectManageMember && (
+          <Modal
+            title="Cấp tài khoản Hội viên"
+            description={`${accountMember.maHoiVien} - ${accountMember.hoTen}`}
+            maxWidth="max-w-xl"
+            onClose={() => {
+              if (
+                !submitting
+              ) {
+                setAccountMember(
+                  null,
+                );
+              }
+            }}
+          >
+            <form
+              onSubmit={
+                handleCreateAccount
+              }
+            >
+              <div className="space-y-4 p-5 sm:p-6">
+                <Field
+                  label="Tên đăng nhập"
+                  required
+                >
                   <input
                     required
-                    minLength={6}
-                    type={showAccountPassword ? "text" : "password"}
-                    value={accountForm.password}
-                    onChange={(event) =>
+                    value={
+                      accountForm.username
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setAccountForm({
                         ...accountForm,
-                        password: event.target.value,
+
+                        username:
+                          event.target.value,
                       })
                     }
-                    className="control pr-12"
-                    placeholder="Nhập mật khẩu từ 6 ký tự"
-                    autoComplete="new-password"
+                    className="control"
+                    placeholder="Nhập tên đăng nhập"
+                    autoComplete="username"
                   />
+                </Field>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowAccountPassword((current) => !current)
-                    }
-                    className="absolute right-1 top-1/2 flex h-9 w-10 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
-                    aria-label={
-                      showAccountPassword
-                        ? "Ẩn mật khẩu"
-                        : "Hiện mật khẩu"
-                    }
-                  >
-                    {showAccountPassword ? (
-                      <EyeOff size={18} />
-                    ) : (
-                      <Eye size={18} />
-                    )}
-                  </button>
+                <Field
+                  label="Mật khẩu"
+                  required
+                >
+                  <div className="relative">
+                    <input
+                      required
+                      minLength={6}
+                      type={
+                        showAccountPassword
+                          ? "text"
+                          : "password"
+                      }
+                      value={
+                        accountForm.password
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        setAccountForm({
+                          ...accountForm,
+
+                          password:
+                            event.target
+                              .value,
+                        })
+                      }
+                      className="control pr-12"
+                      placeholder="Nhập mật khẩu từ 6 ký tự"
+                      autoComplete="new-password"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowAccountPassword(
+                          (
+                            current,
+                          ) =>
+                            !current,
+                        )
+                      }
+                      className="absolute right-1 top-1/2 flex h-9 w-10 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
+                      aria-label={
+                        showAccountPassword
+                          ? "Ẩn mật khẩu"
+                          : "Hiện mật khẩu"
+                      }
+                    >
+                      {showAccountPassword ? (
+                        <EyeOff
+                          size={
+                            18
+                          }
+                        />
+                      ) : (
+                        <Eye
+                          size={
+                            18
+                          }
+                        />
+                      )}
+                    </button>
+                  </div>
+                </Field>
+
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                  Sau khi cấp, mật khẩu
+                  được mã hóa và không thể
+                  đọc lại. Có thể sử dụng
+                  chức năng đặt lại mật
+                  khẩu khi cần.
                 </div>
-              </Field>
-
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-                Sau khi cấp, mật khẩu được mã hóa và không thể đọc lại.
-                Quản trị viên có thể sử dụng chức năng đặt lại mật khẩu.
               </div>
-            </div>
 
-            <ModalFooter
-              submitting={submitting}
-              submitText="Cấp tài khoản"
-              onCancel={() => setAccountMember(null)}
-            />
-          </form>
-        </Modal>
-      )}
+              <ModalFooter
+                submitting={
+                  submitting
+                }
+                submitText="Cấp tài khoản"
+                onCancel={() =>
+                  setAccountMember(
+                    null,
+                  )
+                }
+              />
+            </form>
+          </Modal>
+        )}
 
-      {deleteMember && (
-        <ConfirmModal
-          title="Xóa Hội viên"
-          message={
-            <>
-              Bạn có chắc chắn muốn xóa Hội viên{" "}
-              <strong>{deleteMember.hoTen}</strong>? Dữ liệu đã xóa không
-              thể khôi phục.
-            </>
-          }
-          confirmText="Xóa Hội viên"
-          submitting={submitting}
-          danger
-          onCancel={() => setDeleteMember(null)}
-          onConfirm={handleDeleteMember}
-        />
-      )}
+      {/* ===================================================
+          DELETE
+      =================================================== */}
 
-      {statusMember && (
-        <ConfirmModal
-          title={
-            statusMember.trangThai === "DANG_HOAT_DONG"
-              ? "Ngừng hoạt động Hội viên"
-              : "Kích hoạt lại Hội viên"
-          }
-          message={
-            statusMember.trangThai === "DANG_HOAT_DONG" ? (
+      {deleteMember &&
+        canDirectManageMember && (
+          <ConfirmModal
+            title="Xóa Hội viên"
+            message={
               <>
-                Bạn có muốn ngừng hoạt động Hội viên{" "}
-                <strong>{statusMember.hoTen}</strong> không? Tài khoản liên
-                kết sẽ không thể đăng nhập.
+                Bạn có chắc chắn muốn
+                xóa Hội viên{" "}
+                <strong>
+                  {
+                    deleteMember.hoTen
+                  }
+                </strong>
+                ? Dữ liệu đã xóa không
+                thể khôi phục.
               </>
-            ) : (
-              <>
-                Bạn có muốn kích hoạt lại Hội viên{" "}
-                <strong>{statusMember.hoTen}</strong> không?
-              </>
-            )
-          }
-          confirmText={
-            statusMember.trangThai === "DANG_HOAT_DONG"
-              ? "Ngừng hoạt động"
-              : "Kích hoạt lại"
-          }
-          submitting={submitting}
-          danger={statusMember.trangThai === "DANG_HOAT_DONG"}
-          onCancel={() => setStatusMember(null)}
-          onConfirm={handleChangeStatus}
-        />
-      )}
+            }
+            confirmText="Xóa Hội viên"
+            submitting={
+              submitting
+            }
+            danger
+            onCancel={() =>
+              setDeleteMember(
+                null,
+              )
+            }
+            onConfirm={
+              handleDeleteMember
+            }
+          />
+        )}
+
+      {/* ===================================================
+          STATUS
+      =================================================== */}
+
+      {statusMember &&
+        canDirectManageMember && (
+          <ConfirmModal
+            title={
+              statusMember.trangThai ===
+              "DANG_HOAT_DONG"
+                ? "Ngừng hoạt động Hội viên"
+                : "Kích hoạt lại Hội viên"
+            }
+            message={
+              statusMember.trangThai ===
+              "DANG_HOAT_DONG" ? (
+                <>
+                  Bạn có muốn ngừng hoạt
+                  động Hội viên{" "}
+                  <strong>
+                    {
+                      statusMember.hoTen
+                    }
+                  </strong>
+                  ? Tài khoản liên kết sẽ
+                  không thể đăng nhập.
+                </>
+              ) : (
+                <>
+                  Bạn có muốn kích hoạt
+                  lại Hội viên{" "}
+                  <strong>
+                    {
+                      statusMember.hoTen
+                    }
+                  </strong>
+                  ?
+                </>
+              )
+            }
+            confirmText={
+              statusMember.trangThai ===
+              "DANG_HOAT_DONG"
+                ? "Ngừng hoạt động"
+                : "Kích hoạt lại"
+            }
+            submitting={
+              submitting
+            }
+            danger={
+              statusMember.trangThai ===
+              "DANG_HOAT_DONG"
+            }
+            onCancel={() =>
+              setStatusMember(
+                null,
+              )
+            }
+            onConfirm={
+              handleChangeStatus
+            }
+          />
+        )}
+
+      {/* ===================================================
+          REFRESH
+      =================================================== */}
 
       {refreshConfirmOpen && (
         <ConfirmModal
           title="Xác nhận làm mới"
           message={
             <>
-              Bạn có muốn làm mới danh sách không? Hệ thống sẽ đặt lại tìm
-              kiếm, bộ lọc và tải dữ liệu mới nhất. Thao tác này{" "}
-              <strong>không xóa Hội viên</strong>.
+              Bạn có muốn làm mới danh
+              sách không? Hệ thống sẽ
+              đặt lại tìm kiếm, bộ lọc
+              và tải dữ liệu mới nhất.
+              Thao tác này{" "}
+              <strong>
+                không xóa Hội viên
+              </strong>
+              .
             </>
           }
           confirmText="Đồng ý làm mới"
-          submitting={loading}
-          onCancel={() => setRefreshConfirmOpen(false)}
-          onConfirm={handleRefresh}
+          submitting={
+            loading
+          }
+          onCancel={() =>
+            setRefreshConfirmOpen(
+              false,
+            )
+          }
+          onConfirm={
+            handleRefresh
+          }
         />
       )}
 
-      <ResetMatKhauHoiVienModal
-        open={Boolean(resetMember)}
-        hoiVien={
-          resetMember && resetAccount
-            ? {
-                _id: resetMember._id,
-                maHoiVien: resetMember.maHoiVien,
-                hoTen: resetMember.hoTen,
-                username: resetAccount.username,
-              }
-            : null
-        }
-        onClose={() => setResetMember(null)}
-        onSuccess={(successMessage) => {
-          setError("");
-          setMessage(successMessage);
-        }}
-      />
+      {/* ===================================================
+          RESET PASSWORD
+      =================================================== */}
+
+      {canDirectManageMember && (
+        <ResetMatKhauHoiVienModal
+          open={Boolean(
+            resetMember,
+          )}
+          hoiVien={
+            resetMember &&
+            resetAccount
+              ? {
+                  _id:
+                    resetMember._id,
+
+                  maHoiVien:
+                    resetMember.maHoiVien,
+
+                  hoTen:
+                    resetMember.hoTen,
+
+                  username:
+                    resetAccount.username,
+                }
+              : null
+          }
+          onClose={() =>
+            setResetMember(
+              null,
+            )
+          }
+          onSuccess={(
+            successMessage,
+          ) => {
+            setError("");
+
+            setMessage(
+              successMessage,
+            );
+
+            setResetMember(
+              null,
+            );
+
+            void loadData();
+          }}
+        />
+      )}
+
+      {/* ===================================================
+          GLOBAL CONTROL STYLE
+      =================================================== */}
 
       <style jsx global>{`
         .control {
@@ -1665,7 +3552,7 @@ export default function HoiVienPage() {
           background: #ffffff;
           padding-left: 12px;
           padding-right: 12px;
-          font-family: Roboto, Arial, sans-serif;
+          font-family: Arial, sans-serif;
           font-size: 14px;
           color: #0f172a;
           outline: none;
@@ -1680,7 +3567,12 @@ export default function HoiVienPage() {
 
         .control:focus {
           border-color: #12345b;
-          box-shadow: 0 0 0 3px rgba(18, 52, 91, 0.1);
+          box-shadow: 0 0 0 3px
+            rgba(18, 52, 91, 0.1);
+        }
+
+        .control:disabled {
+          cursor: not-allowed;
         }
 
         input[type="search"]::-webkit-search-cancel-button {
@@ -1690,6 +3582,10 @@ export default function HoiVienPage() {
     </main>
   );
 }
+
+/* =========================================================
+   MODAL
+========================================================= */
 
 function Modal({
   title,
@@ -1706,17 +3602,22 @@ function Modal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/50 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
+      onMouseDown={(
+        event,
+      ) => {
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
           onClose();
         }
       }}
     >
       <div
-        className={`max-h-[calc(100vh-2rem)] w-full ${maxWidth} overflow-y-auto rounded-xl bg-white shadow-2xl`}
+        className={`max-h-[94vh] w-full ${maxWidth} overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-xl`}
       >
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
           <div>
@@ -1725,17 +3626,23 @@ function Modal({
             </h2>
 
             {description && (
-              <p className="mt-1 text-sm text-slate-600">{description}</p>
+              <p className="mt-1 text-sm text-slate-600">
+                {description}
+              </p>
             )}
           </div>
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={
+              onClose
+            }
             className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
             aria-label="Đóng"
           >
-            <X size={20} />
+            <X
+              size={20}
+            />
           </button>
         </div>
 
@@ -1744,6 +3651,10 @@ function Modal({
     </div>
   );
 }
+
+/* =========================================================
+   STAT CARD
+========================================================= */
 
 function StatCard({
   label,
@@ -1757,20 +3668,29 @@ function StatCard({
   iconClass: string;
 }) {
   return (
-    <div className="flex min-h-24 items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div className="flex min-h-24 items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5">
       <div>
-        <p className="text-sm font-medium text-slate-600">{label}</p>
-        <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
+        <p className="text-xs font-medium text-slate-600 sm:text-sm">
+          {label}
+        </p>
+
+        <p className="mt-2 text-2xl font-bold text-slate-950">
+          {value}
+        </p>
       </div>
 
       <div
-        className={`flex h-12 w-12 items-center justify-center rounded-xl ${iconClass}`}
+        className={`flex h-11 w-11 items-center justify-center rounded-xl sm:h-12 sm:w-12 ${iconClass}`}
       >
         {icon}
       </div>
     </div>
   );
 }
+
+/* =========================================================
+   FIELD
+========================================================= */
 
 function Field({
   label,
@@ -1785,13 +3705,22 @@ function Field({
     <label className="block">
       <span className="mb-2 block text-sm font-semibold text-slate-700">
         {label}
-        {required && <span className="ml-1 text-red-600">*</span>}
+
+        {required && (
+          <span className="ml-1 text-red-600">
+            *
+          </span>
+        )}
       </span>
 
       {children}
     </label>
   );
 }
+
+/* =========================================================
+   INFO
+========================================================= */
 
 function Info({
   label,
@@ -1813,12 +3742,19 @@ function Info({
   );
 }
 
+/* =========================================================
+   STATUS BADGE
+========================================================= */
+
 function StatusBadge({
   value,
 }: {
   value: TrangThaiHoiVien;
 }) {
-  if (value === "DANG_HOAT_DONG") {
+  if (
+    value ===
+    "DANG_HOAT_DONG"
+  ) {
     return (
       <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
         Đang hoạt động
@@ -1833,6 +3769,10 @@ function StatusBadge({
   );
 }
 
+/* =========================================================
+   RATING BADGE
+========================================================= */
+
 function RatingBadge({
   value,
 }: {
@@ -1846,22 +3786,40 @@ function RatingBadge({
     );
   }
 
-  const styles: Record<XepLoai, string> = {
-    XUAT_SAC: "bg-violet-50 text-violet-700",
-    TOT: "bg-emerald-50 text-emerald-700",
-    KHA: "bg-blue-50 text-blue-700",
-    TRUNG_BINH: "bg-amber-50 text-amber-700",
-    YEU: "bg-red-50 text-red-700",
+  const styles: Record<
+    XepLoai,
+    string
+  > = {
+    XUAT_SAC:
+      "bg-violet-50 text-violet-700",
+
+    TOT:
+      "bg-emerald-50 text-emerald-700",
+
+    KHA:
+      "bg-blue-50 text-blue-700",
+
+    TRUNG_BINH:
+      "bg-amber-50 text-amber-700",
+
+    YEU:
+      "bg-red-50 text-red-700",
   };
 
   return (
     <span
       className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${styles[value]}`}
     >
-      {formatRating(value)}
+      {formatRating(
+        value,
+      )}
     </span>
   );
 }
+
+/* =========================================================
+   ICON BUTTON
+========================================================= */
 
 function IconButton({
   title,
@@ -1891,6 +3849,10 @@ function IconButton({
   );
 }
 
+/* =========================================================
+   MOBILE BUTTON
+========================================================= */
+
 function MobileButton({
   danger = false,
   onClick,
@@ -1915,6 +3877,10 @@ function MobileButton({
   );
 }
 
+/* =========================================================
+   MODAL FOOTER
+========================================================= */
+
 function ModalFooter({
   submitting,
   submitText,
@@ -1928,8 +3894,12 @@ function ModalFooter({
     <div className="flex flex-col-reverse gap-3 border-t border-slate-200 p-4 sm:flex-row sm:justify-end sm:px-6">
       <button
         type="button"
-        disabled={submitting}
-        onClick={onCancel}
+        disabled={
+          submitting
+        }
+        onClick={
+          onCancel
+        }
         className="h-11 rounded-lg border border-slate-300 bg-white px-5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
       >
         Hủy
@@ -1937,14 +3907,22 @@ function ModalFooter({
 
       <button
         type="submit"
-        disabled={submitting}
+        disabled={
+          submitting
+        }
         className="h-11 rounded-lg bg-[#12345B] px-5 text-sm font-semibold text-white hover:bg-[#0D2947] disabled:opacity-60"
       >
-        {submitting ? "Đang xử lý..." : submitText}
+        {submitting
+          ? "Đang xử lý..."
+          : submitText}
       </button>
     </div>
   );
 }
+
+/* =========================================================
+   CONFIRM MODAL
+========================================================= */
 
 function ConfirmModal({
   title,
@@ -1961,10 +3939,20 @@ function ConfirmModal({
   submitting: boolean;
   danger?: boolean;
   onCancel: () => void;
-  onConfirm: () => void | Promise<void>;
+
+  onConfirm:
+    () =>
+      | void
+      | Promise<void>;
 }) {
   return (
-    <Modal title={title} maxWidth="max-w-md" onClose={onCancel}>
+    <Modal
+      title={title}
+      maxWidth="max-w-md"
+      onClose={
+        onCancel
+      }
+    >
       <div className="px-5 py-5 sm:px-6">
         <div className="text-sm leading-6 text-slate-600">
           {message}
@@ -1974,8 +3962,12 @@ function ConfirmModal({
       <div className="flex flex-col-reverse gap-3 border-t border-slate-200 p-4 sm:flex-row sm:justify-end sm:px-6">
         <button
           type="button"
-          disabled={submitting}
-          onClick={onCancel}
+          disabled={
+            submitting
+          }
+          onClick={
+            onCancel
+          }
           className="h-11 rounded-lg border border-slate-300 bg-white px-5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
         >
           Hủy
@@ -1983,15 +3975,21 @@ function ConfirmModal({
 
         <button
           type="button"
-          disabled={submitting}
-          onClick={() => void onConfirm()}
+          disabled={
+            submitting
+          }
+          onClick={() =>
+            void onConfirm()
+          }
           className={`h-11 rounded-lg px-5 text-sm font-semibold text-white disabled:opacity-60 ${
             danger
               ? "bg-red-600 hover:bg-red-700"
               : "bg-[#12345B] hover:bg-[#0D2947]"
           }`}
         >
-          {submitting ? "Đang xử lý..." : confirmText}
+          {submitting
+            ? "Đang xử lý..."
+            : confirmText}
         </button>
       </div>
     </Modal>

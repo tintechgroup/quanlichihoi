@@ -1,471 +1,782 @@
-import mongoose from "mongoose";
 import {
-  type NextRequest,
   NextResponse,
 } from "next/server";
 
-import { connectDB } from "@/lib/mongodb";
-import { getCurrentSession } from "@/lib/session";
+import {
+  Types,
+} from "mongoose";
 
-import DaDocThongBao from "@/models/DaDocThongBao";
+import {
+  connectDB,
+} from "@/lib/mongodb";
+
+import {
+  getCurrentSession,
+} from "@/lib/session";
+
+import ThongBao from "@/models/ThongBao";
+import User from "@/models/User";
 import HoiVien from "@/models/HoiVien";
-import ThongBao, {
-  type PhamViThongBao,
-  type TrangThaiThongBao,
-  type VaiTroNhanThongBao,
-} from "@/models/ThongBao";
 
-export const dynamic = "force-dynamic";
+export const dynamic =
+  "force-dynamic";
+
+export const runtime =
+  "nodejs";
+
+/* =========================================================
+   TYPES
+========================================================= */
+
+type UserRole =
+  | "ADMIN"
+  | "BAN_CHAP_HANH"
+  | "CHI_HOI_TRUONG"
+  | "HOI_VIEN";
+
+interface SessionUser {
+  userId: string;
+
+  username?: string;
+
+  fullName?: string;
+
+  role: UserRole;
+}
 
 interface RouteContext {
-  params: Promise<{
-    id: string;
-  }>;
+  params:
+    Promise<{
+      id: string;
+    }>;
 }
 
-function objectIdEquals(
-  first: unknown,
-  second: unknown,
+interface RequestBody {
+  daDoc?: unknown;
+}
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const ROLES: UserRole[] = [
+  "ADMIN",
+  "BAN_CHAP_HANH",
+  "CHI_HOI_TRUONG",
+  "HOI_VIEN",
+];
+
+/* =========================================================
+   RESPONSE
+========================================================= */
+
+function responseError(
+  message: string,
+  status = 400,
 ) {
-  return String(first || "") === String(second || "");
+  return NextResponse.json(
+    {
+      success: false,
+      message,
+    },
+    {
+      status,
+    },
+  );
 }
 
-async function getUserChiHoiId(userId: string) {
-  const hoiVien = await HoiVien.findOne({
-    taiKhoanId: userId,
-  })
-    .select("chiHoiId")
-    .lean();
+/* =========================================================
+   SESSION
+========================================================= */
 
-  return hoiVien?.chiHoiId?.toString() || null;
-}
-
-function isWithinDisplayTime(
-  ngayBatDau?: Date,
-  ngayKetThuc?: Date,
+function normalizeString(
+  value: unknown,
 ) {
-  const now = Date.now();
+  return typeof value ===
+    "string"
+    ? value.trim()
+    : "";
+}
 
+function normalizeSession(
+  rawSession: unknown,
+): SessionUser | null {
   if (
-    ngayBatDau &&
-    ngayBatDau.getTime() > now
+    !rawSession ||
+    typeof rawSession !==
+      "object"
   ) {
-    return false;
+    return null;
   }
 
-  if (
-    ngayKetThuc &&
-    ngayKetThuc.getTime() < now
-  ) {
-    return false;
-  }
+  const session =
+    rawSession as Record<
+      string,
+      unknown
+    >;
 
-  return true;
-}
+  const nestedUser =
+    session.user &&
+    typeof session.user ===
+      "object"
+      ? session.user as Record<
+          string,
+          unknown
+        >
+      : {};
 
-async function canViewAnnouncement(
-  announcement: {
-    phamVi: PhamViThongBao;
-    trangThai: TrangThaiThongBao;
-    chiHoiIds?: mongoose.Types.ObjectId[];
-    vaiTroNhan?: VaiTroNhanThongBao[];
-    nguoiNhanIds?: mongoose.Types.ObjectId[];
-    ngayBatDau?: Date;
-    ngayKetThuc?: Date;
-    nguoiTaoId: mongoose.Types.ObjectId;
-  },
-  session: {
-    userId: string;
-    role: string;
-  },
-) {
-  /*
-   * Admin và Ban Chấp hành có thể xem tất cả
-   * thông báo trong màn hình quản lý.
-   */
-  if (
-    session.role === "ADMIN" ||
-    session.role === "BAN_CHAP_HANH"
-  ) {
-    return true;
-  }
+  const userId =
+    String(
+      session.userId ??
+        session.id ??
+        session._id ??
+        nestedUser.userId ??
+        nestedUser.id ??
+        nestedUser._id ??
+        "",
+    );
 
-  /*
-   * Chi hội trưởng được xem thông báo do mình tạo.
-   */
+  const role =
+    String(
+      session.role ??
+        nestedUser.role ??
+        "",
+    ) as UserRole;
+
   if (
-    session.role === "CHI_HOI_TRUONG" &&
-    objectIdEquals(
-      announcement.nguoiTaoId,
-      session.userId,
+    !userId ||
+    !Types.ObjectId.isValid(
+      userId,
     )
   ) {
-    return true;
+    return null;
   }
 
   if (
-    announcement.trangThai !== "DA_DANG"
-  ) {
-    return false;
-  }
-
-  if (
-    !isWithinDisplayTime(
-      announcement.ngayBatDau,
-      announcement.ngayKetThuc,
+    !ROLES.includes(
+      role,
     )
   ) {
+    return null;
+  }
+
+  return {
+    userId,
+
+    role,
+
+    username:
+      normalizeString(
+        session.username ??
+          nestedUser.username,
+      ),
+
+    fullName:
+      normalizeString(
+        session.fullName ??
+          session.hoTen ??
+          nestedUser.fullName ??
+          nestedUser.hoTen,
+      ),
+  };
+}
+
+/* =========================================================
+   OBJECT ID
+========================================================= */
+
+function objectIdToString(
+  value: unknown,
+) {
+  if (!value) {
+    return "";
+  }
+
+  if (
+    typeof value ===
+    "string"
+  ) {
+    return value;
+  }
+
+  if (
+    value instanceof
+    Types.ObjectId
+  ) {
+    return value.toString();
+  }
+
+  if (
+    typeof value ===
+    "object"
+  ) {
+    const object =
+      value as Record<
+        string,
+        unknown
+      >;
+
+    if (
+      object._id
+    ) {
+      return objectIdToString(
+        object._id,
+      );
+    }
+
+    if (
+      object.id
+    ) {
+      return objectIdToString(
+        object.id,
+      );
+    }
+  }
+
+  return String(
+    value,
+  );
+}
+
+/* =========================================================
+   GET USER CHI HOI
+========================================================= */
+
+async function getUserChiHoiId(
+  session: SessionUser,
+): Promise<
+  Types.ObjectId | null
+> {
+  /*
+   * Chi hội trưởng:
+   * User.chiHoiId là nguồn chính.
+   */
+  if (
+    session.role ===
+    "CHI_HOI_TRUONG"
+  ) {
+    const user =
+      await User.findById(
+        session.userId,
+      )
+        .select(
+          "chiHoiId",
+        )
+        .lean();
+
+    if (
+      user?.chiHoiId
+    ) {
+      return new Types.ObjectId(
+        String(
+          user.chiHoiId,
+        ),
+      );
+    }
+  }
+
+  /*
+   * Hội viên:
+   * HoiVien.chiHoiId là nguồn chính.
+   */
+  const hoiVien =
+    await HoiVien.findOne({
+      taiKhoanId:
+        new Types.ObjectId(
+          session.userId,
+        ),
+    })
+      .select(
+        "chiHoiId",
+      )
+      .lean();
+
+  if (
+    hoiVien?.chiHoiId
+  ) {
+    return new Types.ObjectId(
+      String(
+        hoiVien.chiHoiId,
+      ),
+    );
+  }
+
+  /*
+   * Fallback cho dữ liệu cũ.
+   */
+  const user =
+    await User.findById(
+      session.userId,
+    )
+      .select(
+        "chiHoiId",
+      )
+      .lean();
+
+  if (
+    user?.chiHoiId
+  ) {
+    return new Types.ObjectId(
+      String(
+        user.chiHoiId,
+      ),
+    );
+  }
+
+  return null;
+}
+
+/* =========================================================
+   CAN RECEIVE
+========================================================= */
+
+async function canReceiveNotification(
+  document: {
+    trangThai?: unknown;
+
+    phamVi?: unknown;
+
+    vaiTroNguoiNhan?: unknown;
+
+    nguoiNhanIds?: unknown;
+
+    chiHoiIds?: unknown;
+
+    ngayBatDau?: unknown;
+
+    ngayKetThuc?: unknown;
+  },
+
+  session: SessionUser,
+) {
+  /*
+   * Chỉ thông báo đã phát hành
+   * mới được phép đánh dấu đọc.
+   *
+   * NHAP / CHO_DUYET / TU_CHOI / DA_AN
+   * tuyệt đối không được tính là thông báo người nhận.
+   */
+  if (
+    document.trangThai !==
+    "DA_DANG"
+  ) {
     return false;
   }
 
-  if (announcement.phamVi === "TAT_CA") {
+  const now =
+    new Date();
+
+  if (
+    document.ngayBatDau
+  ) {
+    const start =
+      new Date(
+        String(
+          document.ngayBatDau,
+        ),
+      );
+
+    if (
+      !Number.isNaN(
+        start.getTime(),
+      ) &&
+      start >
+        now
+    ) {
+      return false;
+    }
+  }
+
+  if (
+    document.ngayKetThuc
+  ) {
+    const end =
+      new Date(
+        String(
+          document.ngayKetThuc,
+        ),
+      );
+
+    if (
+      !Number.isNaN(
+        end.getTime(),
+      ) &&
+      end <
+        now
+    ) {
+      return false;
+    }
+  }
+
+  const phamVi =
+    String(
+      document.phamVi ??
+        "",
+    );
+
+  /* =====================================================
+     TAT CA
+  ===================================================== */
+
+  if (
+    phamVi ===
+    "TAT_CA"
+  ) {
     return true;
   }
 
-  if (announcement.phamVi === "VAI_TRO") {
-    return (
-      announcement.vaiTroNhan?.includes(
-        session.role as VaiTroNhanThongBao,
-      ) ?? false
+  /* =====================================================
+     VAI TRO
+  ===================================================== */
+
+  if (
+    phamVi ===
+    "VAI_TRO"
+  ) {
+    const roles =
+      Array.isArray(
+        document.vaiTroNguoiNhan,
+      )
+        ? document.vaiTroNguoiNhan.map(
+            (
+              item,
+            ) =>
+              String(
+                item,
+              ),
+          )
+        : [];
+
+    return roles.includes(
+      session.role,
     );
   }
 
-  if (announcement.phamVi === "CA_NHAN") {
-    return (
-      announcement.nguoiNhanIds?.some((id) =>
-        objectIdEquals(id, session.userId),
-      ) ?? false
-    );
-  }
+  /* =====================================================
+     CA NHAN
+  ===================================================== */
 
-  if (announcement.phamVi === "CHI_HOI") {
-    const chiHoiId = await getUserChiHoiId(
+  if (
+    phamVi ===
+    "CA_NHAN"
+  ) {
+    const ids =
+      Array.isArray(
+        document.nguoiNhanIds,
+      )
+        ? document.nguoiNhanIds.map(
+            objectIdToString,
+          )
+        : [];
+
+    return ids.includes(
       session.userId,
     );
+  }
 
-    if (!chiHoiId) {
+  /* =====================================================
+     CHI HOI
+  ===================================================== */
+
+  if (
+    phamVi ===
+    "CHI_HOI"
+  ) {
+    const chiHoiId =
+      await getUserChiHoiId(
+        session,
+      );
+
+    if (
+      !chiHoiId
+    ) {
       return false;
     }
 
-    return (
-      announcement.chiHoiIds?.some((id) =>
-        objectIdEquals(id, chiHoiId),
-      ) ?? false
+    const ids =
+      Array.isArray(
+        document.chiHoiIds,
+      )
+        ? document.chiHoiIds.map(
+            objectIdToString,
+          )
+        : [];
+
+    return ids.includes(
+      chiHoiId.toString(),
     );
   }
 
   return false;
 }
 
-/*
- * PATCH /api/thong-bao/[id]/da-doc
- *
- * Body:
- * {
- *   "daDoc": true
- * }
- *
- * hoặc:
- *
- * {
- *   "daDoc": false
- * }
- */
+/* =========================================================
+   PATCH /api/thong-bao/[id]/da-doc
+========================================================= */
+
 export async function PATCH(
-  request: NextRequest,
+  request: Request,
+
   context: RouteContext,
 ) {
   try {
-    const session = await getCurrentSession();
+    /* =====================================================
+       AUTH
+    ===================================================== */
 
-    if (!session?.userId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Vui lòng đăng nhập để tiếp tục",
-        },
-        {
-          status: 401,
-        },
+    const session =
+      normalizeSession(
+        await getCurrentSession(),
+      );
+
+    if (!session) {
+      return responseError(
+        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn",
+        401,
       );
     }
 
-    const { id } = await context.params;
-
-    if (!mongoose.isValidObjectId(id)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Mã thông báo không hợp lệ",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
-    let body: unknown;
-
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Dữ liệu gửi lên không hợp lệ",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
+    const {
+      id,
+    } =
+      await context.params;
 
     if (
-      typeof body !== "object" ||
-      body === null ||
-      Array.isArray(body)
+      !Types.ObjectId.isValid(
+        id,
+      )
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Dữ liệu gửi lên không hợp lệ",
-        },
-        {
-          status: 400,
-        },
+      return responseError(
+        "Mã thông báo không hợp lệ",
+        400,
       );
     }
 
-    const requestBody = body as {
-      daDoc?: unknown;
+    /* =====================================================
+       BODY
+    ===================================================== */
+
+    let body: RequestBody = {
+      daDoc: true,
     };
 
-    if (typeof requestBody.daDoc !== "boolean") {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Trạng thái đã đọc phải là true hoặc false",
-        },
-        {
-          status: 400,
-        },
+    try {
+      const text =
+        await request.text();
+
+      if (
+        text.trim()
+      ) {
+        body =
+          JSON.parse(
+            text,
+          ) as RequestBody;
+      }
+    } catch {
+      return responseError(
+        "Dữ liệu gửi lên không hợp lệ",
+        400,
       );
     }
+
+    const daDoc =
+      body.daDoc ===
+      false
+        ? false
+        : true;
 
     await connectDB();
 
-    const announcement =
-      await ThongBao.findById(id);
+    void User;
+    void HoiVien;
 
-    if (!announcement) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Không tìm thấy thông báo",
-        },
-        {
-          status: 404,
-        },
+    /* =====================================================
+       FIND NOTIFICATION
+    ===================================================== */
+
+    const thongBao =
+      await ThongBao.findById(
+        id,
+      );
+
+    if (!thongBao) {
+      return responseError(
+        "Không tìm thấy thông báo",
+        404,
       );
     }
 
-    const allowed = await canViewAnnouncement(
-      announcement,
-      session,
-    );
+    /* =====================================================
+       PERMISSION
+    ===================================================== */
+
+    const allowed =
+      await canReceiveNotification(
+        {
+          trangThai:
+            thongBao.trangThai,
+
+          phamVi:
+            thongBao.phamVi,
+
+          vaiTroNguoiNhan:
+            thongBao.vaiTroNguoiNhan,
+
+          nguoiNhanIds:
+            thongBao.nguoiNhanIds,
+
+          chiHoiIds:
+            thongBao.chiHoiIds,
+
+          ngayBatDau:
+            thongBao.ngayBatDau,
+
+          ngayKetThuc:
+            thongBao.ngayKetThuc,
+        },
+
+        session,
+      );
 
     if (!allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Bạn không có quyền xem thông báo này",
-        },
-        {
-          status: 403,
-        },
+      return responseError(
+        "Bạn không phải đối tượng nhận thông báo này",
+        403,
       );
     }
 
-    const existingRecord =
-      await DaDocThongBao.findOne({
-        thongBaoId: announcement._id,
-        nguoiDungId: session.userId,
-      });
+    const currentUserId =
+      new Types.ObjectId(
+        session.userId,
+      );
 
-    /*
-     * Đánh dấu đã đọc.
-     */
-    if (requestBody.daDoc) {
-      const wasAlreadyRead =
-        existingRecord?.daDoc === true;
+    /* =====================================================
+       CURRENT STATE
+    ===================================================== */
 
-      const readRecord =
-        await DaDocThongBao.findOneAndUpdate(
-          {
-            thongBaoId: announcement._id,
-            nguoiDungId: session.userId,
-          },
-          {
-            $set: {
-              daDoc: true,
-              thoiGianDoc: new Date(),
-            },
-          },
-          {
-            new: true,
-            upsert: true,
-            setDefaultsOnInsert: true,
-          },
-        );
+    const currentIds =
+      Array.isArray(
+        thongBao.nguoiDaDocIds,
+      )
+        ? thongBao.nguoiDaDocIds
+        : [];
+
+    const alreadyRead =
+      currentIds.some(
+        (
+          userId,
+        ) =>
+          String(
+            userId,
+          ) ===
+          session.userId,
+      );
+
+    /* =====================================================
+       MARK READ
+    ===================================================== */
+
+    if (
+      daDoc &&
+      !alreadyRead
+    ) {
+      thongBao.nguoiDaDocIds.push(
+        currentUserId,
+      );
 
       /*
-       * Chỉ tăng lượt xem khi chuyển từ
-       * chưa đọc sang đã đọc.
+       * soLuotXem được tính theo
+       * số user unique đã đọc.
+       *
+       * Không tăng mỗi lần mở lại,
+       * tránh refresh nhiều lần làm sai thống kê.
        */
-      if (!wasAlreadyRead) {
-        await ThongBao.updateOne(
-          {
-            _id: announcement._id,
-          },
-          {
-            $inc: {
-              soLuotXem: 1,
-            },
-          },
+      thongBao.soLuotXem =
+        thongBao.nguoiDaDocIds
+          .length;
+
+      await thongBao.save();
+    }
+
+    /* =====================================================
+       MARK UNREAD
+    ===================================================== */
+
+    if (
+      !daDoc &&
+      alreadyRead
+    ) {
+      thongBao.nguoiDaDocIds =
+        thongBao.nguoiDaDocIds.filter(
+          (
+            userId,
+          ) =>
+            String(
+              userId,
+            ) !==
+            session.userId,
         );
-      }
 
-      const updatedAnnouncement =
-        await ThongBao.findById(
-          announcement._id,
-        )
-          .select("soLuotXem")
-          .lean();
+      thongBao.soLuotXem =
+        thongBao.nguoiDaDocIds
+          .length;
 
-      return NextResponse.json({
-        success: true,
-        message:
-          "Đã đánh dấu thông báo là đã đọc",
-        data: {
-          thongBaoId:
-            announcement._id.toString(),
-          daDoc: true,
-          thoiGianDoc:
-            readRecord?.thoiGianDoc ||
-            new Date(),
-          soLuotXem:
-            updatedAnnouncement?.soLuotXem ||
-            0,
-        },
-      });
+      await thongBao.save();
     }
 
-    /*
-     * Đánh dấu chưa đọc.
-     */
-    const wasRead =
-      existingRecord?.daDoc === true;
+    /* =====================================================
+       RESPONSE
+    ===================================================== */
 
-    const unreadRecord =
-      await DaDocThongBao.findOneAndUpdate(
-        {
-          thongBaoId: announcement._id,
-          nguoiDungId: session.userId,
-        },
-        {
-          $set: {
-            daDoc: false,
-          },
-          $unset: {
-            thoiGianDoc: 1,
-          },
-        },
-        {
-          new: true,
-          upsert: true,
-          setDefaultsOnInsert: true,
-        },
+    const finalReadState =
+      thongBao.nguoiDaDocIds.some(
+        (
+          userId,
+        ) =>
+          String(
+            userId,
+          ) ===
+          session.userId,
       );
-
-    /*
-     * Nếu trước đó đã đọc thì giảm số lượt xem.
-     */
-    if (wasRead) {
-      await ThongBao.updateOne(
-        {
-          _id: announcement._id,
-          soLuotXem: {
-            $gt: 0,
-          },
-        },
-        {
-          $inc: {
-            soLuotXem: -1,
-          },
-        },
-      );
-    }
-
-    const updatedAnnouncement =
-      await ThongBao.findById(
-        announcement._id,
-      )
-        .select("soLuotXem")
-        .lean();
 
     return NextResponse.json({
       success: true,
+
       message:
-        "Đã đánh dấu thông báo là chưa đọc",
+        finalReadState
+          ? "Đã đánh dấu thông báo là đã đọc"
+          : "Đã đánh dấu thông báo là chưa đọc",
+
       data: {
-        thongBaoId:
-          announcement._id.toString(),
-        daDoc: false,
-        thoiGianDoc:
-          unreadRecord?.thoiGianDoc || null,
+        id:
+          String(
+            thongBao._id,
+          ),
+
+        daDoc:
+          finalReadState,
+
         soLuotXem:
-          updatedAnnouncement?.soLuotXem ||
-          0,
+          thongBao.soLuotXem,
       },
     });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
-      "Lỗi cập nhật trạng thái đọc:",
+      "PATCH /api/thong-bao/[id]/da-doc:",
       error,
     );
-
-    const databaseError = error as {
-      code?: number;
-    };
-
-    /*
-     * Trường hợp hai yêu cầu đồng thời tạo
-     * cùng một trạng thái đọc.
-     */
-    if (databaseError.code === 11000) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Trạng thái đọc đang được cập nhật, vui lòng thử lại",
-        },
-        {
-          status: 409,
-        },
-      );
-    }
 
     return NextResponse.json(
       {
         success: false,
+
         message:
-          "Đã xảy ra lỗi khi cập nhật trạng thái đọc",
+          error instanceof
+          Error
+            ? error.message
+            : "Không thể cập nhật trạng thái đọc thông báo",
       },
       {
         status: 500,

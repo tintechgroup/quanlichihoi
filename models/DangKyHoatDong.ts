@@ -9,149 +9,270 @@ export type TrangThaiDangKy =
   | "DA_DANG_KY"
   | "DA_THAM_GIA"
   | "VANG_MAT"
+  | "VANG_CO_LY_DO"
   | "DA_HUY";
 
-export interface IDangKyHoatDong extends Document {
+export interface IDangKyHoatDong
+  extends Document {
   hoatDongId: Types.ObjectId;
+
   hoiVienId: Types.ObjectId;
 
-  trangThai: TrangThaiDangKy;
+  trangThai:
+    TrangThaiDangKy;
 
-  thoiGianDangKy: Date;
-  thoiGianHuy?: Date | null;
+  thoiGianDangKy:
+    Date;
 
-  lyDoHuy?: string;
-  ghiChu?: string;
+  thoiGianHuy?:
+    | Date
+    | null;
 
-  nguoiCapNhatId?: Types.ObjectId;
+  thoiGianDiemDanh?:
+    | Date
+    | null;
 
-  createdAt: Date;
-  updatedAt: Date;
+  lyDoHuy?:
+    string;
+
+  lyDoVang?:
+    string;
+
+  ghiChu?:
+    string;
+
+  nguoiCapNhatId?:
+    Types.ObjectId;
+
+  createdAt:
+    Date;
+
+  updatedAt:
+    Date;
 }
 
 const DangKyHoatDongSchema =
   new Schema<IDangKyHoatDong>(
     {
       hoatDongId: {
-        type: Schema.Types.ObjectId,
-        ref: "HoatDong",
+        type:
+          Schema.Types.ObjectId,
+
+        ref:
+          "HoatDong",
+
         required: [
           true,
           "Hoạt động không được để trống",
         ],
-        index: true,
+
+        index:
+          true,
       },
 
       hoiVienId: {
-        type: Schema.Types.ObjectId,
-        ref: "HoiVien",
+        type:
+          Schema.Types.ObjectId,
+
+        ref:
+          "HoiVien",
+
         required: [
           true,
           "Hội viên không được để trống",
         ],
-        index: true,
+
+        index:
+          true,
       },
 
       trangThai: {
-        type: String,
+        type:
+          String,
+
         enum: [
           "DA_DANG_KY",
           "DA_THAM_GIA",
           "VANG_MAT",
+          "VANG_CO_LY_DO",
           "DA_HUY",
         ],
-        default: "DA_DANG_KY",
-        required: true,
-        index: true,
+
+        default:
+          "DA_DANG_KY",
+
+        required:
+          true,
+
+        index:
+          true,
       },
 
       thoiGianDangKy: {
-        type: Date,
-        default: Date.now,
-        required: true,
+        type:
+          Date,
+
+        default:
+          Date.now,
+
+        required:
+          true,
       },
 
       thoiGianHuy: {
-        type: Date,
-        default: undefined,
+        type:
+          Date,
+
+        default:
+          undefined,
+      },
+
+      thoiGianDiemDanh: {
+        type:
+          Date,
+
+        default:
+          undefined,
       },
 
       lyDoHuy: {
-        type: String,
-        trim: true,
+        type:
+          String,
+
+        trim:
+          true,
+
         maxlength: [
           500,
           "Lý do hủy không được vượt quá 500 ký tự",
         ],
-        default: "",
+
+        default:
+          "",
+      },
+
+      lyDoVang: {
+        type:
+          String,
+
+        trim:
+          true,
+
+        maxlength: [
+          1000,
+          "Lý do vắng không được vượt quá 1000 ký tự",
+        ],
+
+        default:
+          "",
       },
 
       ghiChu: {
-        type: String,
-        trim: true,
+        type:
+          String,
+
+        trim:
+          true,
+
         maxlength: [
           1000,
           "Ghi chú không được vượt quá 1000 ký tự",
         ],
-        default: "",
+
+        default:
+          "",
       },
 
       nguoiCapNhatId: {
-        type: Schema.Types.ObjectId,
-        ref: "User",
-        default: undefined,
+        type:
+          Schema.Types.ObjectId,
+
+        ref:
+          "User",
+
+        default:
+          undefined,
       },
     },
     {
-      timestamps: true,
-      versionKey: false,
-    }
+      timestamps:
+        true,
+
+      versionKey:
+        false,
+    },
   );
 
 /*
- * Một Hội viên chỉ có một bản ghi đăng ký
- * cho mỗi hoạt động.
- *
- * Khi Hội viên đăng ký lại sau khi hủy,
- * API sẽ cập nhật bản ghi cũ thành DA_DANG_KY
- * thay vì tạo thêm bản ghi trùng.
+ * Mỗi Hội viên chỉ có
+ * một đăng ký/hoạt động.
  */
 DangKyHoatDongSchema.index(
   {
-    hoatDongId: 1,
-    hoiVienId: 1,
+    hoatDongId:
+      1,
+
+    hoiVienId:
+      1,
   },
   {
-    unique: true,
-    name: "unique_hoat_dong_hoi_vien",
-  }
+    unique:
+      true,
+
+    name:
+      "unique_hoat_dong_hoi_vien",
+  },
 );
 
 /*
- * Hỗ trợ lấy nhanh danh sách người đăng ký
- * của một hoạt động theo trạng thái.
+ * Danh sách đăng ký
+ * theo hoạt động.
  */
 DangKyHoatDongSchema.index({
-  hoatDongId: 1,
-  trangThai: 1,
-  thoiGianDangKy: -1,
+  hoatDongId:
+    1,
+
+  trangThai:
+    1,
+
+  thoiGianDangKy:
+    -1,
 });
 
 /*
- * Hỗ trợ lấy lịch sử tham gia hoạt động
- * của một Hội viên.
+ * Lịch sử của Hội viên.
  */
 DangKyHoatDongSchema.index({
-  hoiVienId: 1,
-  trangThai: 1,
-  createdAt: -1,
+  hoiVienId:
+    1,
+
+  trangThai:
+    1,
+
+  createdAt:
+    -1,
 });
 
-const DangKyHoatDong: Model<IDangKyHoatDong> =
-  mongoose.models.DangKyHoatDong ||
-  mongoose.model<IDangKyHoatDong>(
-    "DangKyHoatDong",
-    DangKyHoatDongSchema
-  );
+/*
+ * Phục vụ thống kê
+ * điểm danh.
+ */
+DangKyHoatDongSchema.index({
+  hoatDongId:
+    1,
+
+  thoiGianDiemDanh:
+    -1,
+});
+
+const DangKyHoatDong:
+  Model<IDangKyHoatDong> =
+    mongoose.models
+      .DangKyHoatDong ||
+    mongoose.model<IDangKyHoatDong>(
+      "DangKyHoatDong",
+
+      DangKyHoatDongSchema,
+    );
 
 export default DangKyHoatDong;
