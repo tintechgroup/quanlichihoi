@@ -120,16 +120,16 @@ const ROLE_LABEL: Record<
   string
 > = {
   ADMIN:
-    "Quản trị viên",
+    "Quáº£n trá»‹ viÃªn",
 
   BAN_CHAP_HANH:
-    "Ban Chấp hành",
+    "Ban Cháº¥p hÃ nh",
 
   CHI_HOI_TRUONG:
-    "Chi hội trưởng",
+    "Chi há»™i trÆ°á»Ÿng",
 
   HOI_VIEN:
-    "Hội viên",
+    "Há»™i viÃªn",
 };
 
 /* =========================================================
@@ -139,7 +139,7 @@ const ROLE_LABEL: Record<
 const MENU_ITEMS: MenuItem[] = [
   {
     label:
-      "Tổng quan",
+      "Tá»•ng quan",
 
     href:
       "/dashboard",
@@ -152,7 +152,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Quản lý Chi hội",
+      "Quáº£n lÃ½ Chi há»™i",
 
     href:
       "/dashboard/chi-hoi",
@@ -170,7 +170,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Quản lý Hội viên",
+      "Quáº£n lÃ½ Há»™i viÃªn",
 
     href:
       "/dashboard/hoi-vien",
@@ -189,7 +189,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Quản lý Ban Chấp hành",
+      "Quáº£n lÃ½ Ban Cháº¥p hÃ nh",
 
     href:
       "/dashboard/ban-chap-hanh",
@@ -207,7 +207,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Quản lý Chi hội trưởng",
+      "Quáº£n lÃ½ Chi há»™i trÆ°á»Ÿng",
 
     href:
       "/dashboard/chi-hoi-truong",
@@ -225,7 +225,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Quản lý nhiệm kỳ",
+      "Quáº£n lÃ½ nhiá»‡m ká»³",
 
     href:
       "/dashboard/nhiem-ky",
@@ -243,7 +243,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Quản lý hoạt động",
+      "Quáº£n lÃ½ hoáº¡t Ä‘á»™ng",
 
     href:
       "/dashboard/hoat-dong",
@@ -256,7 +256,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Minh chứng hoạt động",
+      "Minh chá»©ng hoáº¡t Ä‘á»™ng",
 
     href:
       "/dashboard/minh-chung",
@@ -275,7 +275,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Điểm danh QR",
+      "Äiá»ƒm danh QR",
 
     href:
       "/dashboard/diem-danh-qr",
@@ -288,7 +288,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Điểm rèn luyện",
+      "Äiá»ƒm rÃ¨n luyá»‡n",
 
     href:
       "/dashboard/diem-ren-luyen",
@@ -301,7 +301,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Quản lý tài chính",
+      "Quáº£n lÃ½ tÃ i chÃ­nh",
 
     href:
       "/dashboard/tai-chinh",
@@ -320,7 +320,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Thông báo",
+      "ThÃ´ng bÃ¡o",
 
     href:
       "/dashboard/thong-bao",
@@ -336,7 +336,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Văn kiện và tài liệu",
+      "VÄƒn kiá»‡n vÃ  tÃ i liá»‡u",
 
     href:
       "/dashboard/van-kien",
@@ -349,7 +349,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Hỗ trợ và phản hồi",
+      "Há»— trá»£ vÃ  pháº£n há»“i",
 
     href:
       "/dashboard/ho-tro",
@@ -362,7 +362,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Thống kê và báo cáo",
+      "Thá»‘ng kÃª vÃ  bÃ¡o cÃ¡o",
 
     href:
       "/dashboard/thong-ke",
@@ -381,7 +381,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Xem đánh giá",
+      "Xem Ä‘Ã¡nh giÃ¡",
 
     href:
       "/dashboard/danh-gia",
@@ -399,7 +399,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Đánh giá hệ thống",
+      "ÄÃ¡nh giÃ¡ há»‡ thá»‘ng",
 
     href:
       "/dashboard/danh-gia-he-thong",
@@ -412,7 +412,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Import dữ liệu",
+      "Import dá»¯ liá»‡u",
 
     href:
       "/dashboard/import-du-lieu",
@@ -429,7 +429,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Sao lưu và bảo mật",
+      "Sao lÆ°u vÃ  báº£o máº­t",
 
     href:
       "/dashboard/sao-luu",
@@ -446,7 +446,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Nhật ký hệ thống",
+      "Nháº­t kÃ½ há»‡ thá»‘ng",
 
     href:
       "/dashboard/nhat-ky-he-thong",
@@ -463,7 +463,7 @@ const MENU_ITEMS: MenuItem[] = [
 
   {
     label:
-      "Hồ sơ cá nhân",
+      "Há»“ sÆ¡ cÃ¡ nhÃ¢n",
 
     href:
       "/dashboard/ho-so",
@@ -498,7 +498,7 @@ async function parseResponse(
     );
   } catch {
     throw new Error(
-      "Máy chủ trả về dữ liệu không hợp lệ",
+      "MÃ¡y chá»§ tráº£ vá» dá»¯ liá»‡u khÃ´ng há»£p lá»‡",
     );
   }
 }
@@ -597,7 +597,7 @@ function normalizeUser(
         raw.fullName ??
           raw.hoTen ??
           raw.username ??
-          "Người dùng",
+          "NgÆ°á»i dÃ¹ng",
       ),
 
     role,
@@ -642,7 +642,7 @@ function normalizeThongBao(
     tieuDe:
       String(
         raw.tieuDe ??
-          "Thông báo",
+          "ThÃ´ng bÃ¡o",
       ),
 
     noiDung:
@@ -691,7 +691,7 @@ function formatDate(
       date.getTime(),
     )
   ) {
-    return "—";
+    return "â€”";
   }
 
   return new Intl.DateTimeFormat(
@@ -980,7 +980,7 @@ export default function DashboardShell({
           error
         ) {
           console.error(
-            "Không thể tải người dùng:",
+            "KhÃ´ng thá»ƒ táº£i ngÆ°á»i dÃ¹ng:",
             error,
           );
         } finally {
@@ -1088,7 +1088,7 @@ export default function DashboardShell({
           error
         ) {
           console.error(
-            "Không thể tải thông báo:",
+            "KhÃ´ng thá»ƒ táº£i thÃ´ng bÃ¡o:",
             error,
           );
         } finally {
@@ -1192,7 +1192,7 @@ export default function DashboardShell({
           error
         ) {
           console.error(
-            "Không thể tải số thông báo chờ duyệt:",
+            "KhÃ´ng thá»ƒ táº£i sá»‘ thÃ´ng bÃ¡o chá» duyá»‡t:",
             error,
           );
         }
@@ -1440,7 +1440,7 @@ export default function DashboardShell({
       error
     ) {
       console.error(
-        "Lỗi đăng xuất:",
+        "Lá»—i Ä‘Äƒng xuáº¥t:",
         error,
       );
     } finally {
@@ -1511,8 +1511,8 @@ export default function DashboardShell({
 
     try {
       /*
-       * Nếu chưa đọc:
-       * đánh dấu đọc trước khi chuyển trang.
+       * Náº¿u chÆ°a Ä‘á»c:
+       * Ä‘Ã¡nh dáº¥u Ä‘á»c trÆ°á»›c khi chuyá»ƒn trang.
        */
       if (
         !notification.daDoc
@@ -1579,11 +1579,11 @@ export default function DashboardShell({
       error
     ) {
       /*
-       * Không chặn việc mở trang
-       * chỉ vì API đánh dấu đọc lỗi.
+       * KhÃ´ng cháº·n viá»‡c má»Ÿ trang
+       * chá»‰ vÃ¬ API Ä‘Ã¡nh dáº¥u Ä‘á»c lá»—i.
        */
       console.error(
-        "Không thể đánh dấu thông báo đã đọc:",
+        "KhÃ´ng thá»ƒ Ä‘Ã¡nh dáº¥u thÃ´ng bÃ¡o Ä‘Ã£ Ä‘á»c:",
         error,
       );
     } finally {
@@ -1629,7 +1629,7 @@ export default function DashboardShell({
       {sidebarOpen && (
         <button
           type="button"
-          aria-label="Đóng menu"
+          aria-label="ÄÃ³ng menu"
           onClick={() =>
             setSidebarOpen(
               false,
@@ -1664,11 +1664,11 @@ export default function DashboardShell({
 
             <div className="min-w-0">
               <p className="truncate text-base font-bold uppercase text-white">
-                Liên Chi hội
+                LiÃªn Chi há»™i
               </p>
 
               <p className="mt-1 truncate text-xs text-blue-100">
-                Khoa Sư phạm
+                Khoa SÆ° pháº¡m
               </p>
             </div>
           </Link>
@@ -1692,11 +1692,11 @@ export default function DashboardShell({
 
         <div className="border-b border-white/15 px-4 py-4">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-200">
-            Hệ thống quản lý
+            Há»‡ thá»‘ng quáº£n lÃ½
           </p>
 
           <p className="mt-2 text-sm font-semibold text-white">
-            Trường Đại học Quy Nhơn
+            TrÆ°á»ng Äáº¡i há»c Quy NhÆ¡n
           </p>
         </div>
 
@@ -1704,7 +1704,7 @@ export default function DashboardShell({
 
         <div className="px-4 pb-2 pt-4">
           <p className="px-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-200">
-            Danh mục quản lý
+            Danh má»¥c quáº£n lÃ½
           </p>
         </div>
 
@@ -1789,7 +1789,7 @@ export default function DashboardShell({
                       pendingApprovalCount >
                         0 && (
                         <span
-                          title={`${pendingApprovalCount} thông báo chờ duyệt`}
+                          title={`${pendingApprovalCount} thÃ´ng bÃ¡o chá» duyá»‡t`}
                           className="flex min-h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-amber-950"
                         >
                           {pendingApprovalCount >
@@ -1838,7 +1838,7 @@ export default function DashboardShell({
               />
             )}
 
-            Đăng xuất
+            ÄÄƒng xuáº¥t
           </button>
         </div>
       </aside>
@@ -1870,11 +1870,11 @@ export default function DashboardShell({
 
             <div className="min-w-0">
               <h2 className="truncate text-sm font-bold text-slate-900 sm:text-base">
-                Hệ thống quản lý Liên Chi hội
+                Há»‡ thá»‘ng quáº£n lÃ½ LiÃªn Chi há»™i
               </h2>
 
               <p className="mt-1 hidden truncate text-xs text-slate-500 sm:block">
-                Liên Chi hội Khoa Sư phạm
+                LiÃªn Chi há»™i Khoa SÆ° pháº¡m
               </p>
             </div>
           </div>
@@ -1892,14 +1892,14 @@ export default function DashboardShell({
                   onClick={
                     openPendingApprovals
                   }
-                  title="Thông báo đang chờ duyệt"
+                  title="ThÃ´ng bÃ¡o Ä‘ang chá» duyá»‡t"
                   className="relative hidden h-10 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 md:flex"
                 >
                   <ShieldCheck
                     size={16}
                   />
 
-                  Chờ duyệt
+                  Chá» duyá»‡t
 
                   <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">
                     {pendingApprovalCount >
@@ -1923,8 +1923,8 @@ export default function DashboardShell({
                 onClick={
                   toggleNotificationPanel
                 }
-                title="Xem thông báo"
-                aria-label="Xem thông báo"
+                title="Xem thÃ´ng bÃ¡o"
+                aria-label="Xem thÃ´ng bÃ¡o"
                 className={`relative flex h-11 w-11 items-center justify-center rounded-full border transition ${
                   notificationOpen
                     ? "border-blue-400 bg-blue-50 text-blue-700"
@@ -1970,14 +1970,14 @@ export default function DashboardShell({
                   <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4">
                     <div>
                       <h3 className="font-bold text-slate-900">
-                        Thông báo mới
+                        ThÃ´ng bÃ¡o má»›i
                       </h3>
 
                       <p className="mt-1 text-xs text-slate-500">
                         {unreadCount >
                         0
-                          ? `${unreadCount} thông báo chưa đọc`
-                          : "Không có thông báo chưa đọc"}
+                          ? `${unreadCount} thÃ´ng bÃ¡o chÆ°a Ä‘á»c`
+                          : "KhÃ´ng cÃ³ thÃ´ng bÃ¡o chÆ°a Ä‘á»c"}
                       </p>
                     </div>
 
@@ -1992,7 +1992,7 @@ export default function DashboardShell({
                         notificationLoading
                       }
                       className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                      title="Làm mới"
+                      title="LÃ m má»›i"
                     >
                       <RefreshCw
                         size={17}
@@ -2026,17 +2026,17 @@ export default function DashboardShell({
 
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-amber-900">
-                          Thông báo chờ phê duyệt
+                          ThÃ´ng bÃ¡o chá» phÃª duyá»‡t
                         </p>
 
                         <p className="mt-1 text-xs text-amber-700">
-                          Có{" "}
+                          CÃ³{" "}
                           <strong>
                             {
                               pendingApprovalCount
                             }
                           </strong>{" "}
-                          thông báo đang chờ xử lý
+                          thÃ´ng bÃ¡o Ä‘ang chá» xá»­ lÃ½
                         </p>
                       </div>
 
@@ -2069,11 +2069,11 @@ export default function DashboardShell({
                         </div>
 
                         <p className="mt-4 font-semibold text-slate-700">
-                          Chưa có thông báo
+                          ChÆ°a cÃ³ thÃ´ng bÃ¡o
                         </p>
 
                         <p className="mt-1 text-sm text-slate-500">
-                          Thông báo mới sẽ hiển thị tại đây.
+                          ThÃ´ng bÃ¡o má»›i sáº½ hiá»ƒn thá»‹ táº¡i Ä‘Ã¢y.
                         </p>
                       </div>
                     ) : (
@@ -2183,21 +2183,21 @@ export default function DashboardShell({
                                             .tepDinhKem
                                             .length
                                         }{" "}
-                                        tệp
+                                        tá»‡p
                                       </span>
                                     )}
 
                                     {notification.mucDo ===
                                       "KHAN_CAP" && (
                                       <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                                        Khẩn cấp
+                                        Kháº©n cáº¥p
                                       </span>
                                     )}
 
                                     {notification.mucDo ===
                                       "QUAN_TRONG" && (
                                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                                        Quan trọng
+                                        Quan trá»ng
                                       </span>
                                     )}
                                   </div>
@@ -2220,7 +2220,7 @@ export default function DashboardShell({
                       }
                       className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#123b68] text-sm font-semibold text-white transition hover:bg-[#0d3158]"
                     >
-                      Xem tất cả thông báo
+                      Xem táº¥t cáº£ thÃ´ng bÃ¡o
 
                       <ChevronRight
                         size={17}
@@ -2245,7 +2245,7 @@ export default function DashboardShell({
                   <p className="max-w-44 truncate text-sm font-bold text-slate-900">
                     {currentUser
                       ?.fullName ??
-                      "Người dùng"}
+                      "NgÆ°á»i dÃ¹ng"}
                   </p>
 
                   <div className="mt-1 flex items-center justify-end gap-1 text-xs text-slate-500">
@@ -2259,7 +2259,7 @@ export default function DashboardShell({
                             currentUser
                               .role
                           ]
-                        : "Người dùng"}
+                        : "NgÆ°á»i dÃ¹ng"}
                     </span>
                   </div>
                 </>
