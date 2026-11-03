@@ -1,0 +1,1904 @@
+"use client";
+
+import {
+  CalendarDays,
+  Clock3,
+  Copy,
+  ExternalLink,
+  Loader2,
+  MapPin,
+  QrCode,
+  RefreshCw,
+  StopCircle,
+  UserCheck,
+  Users,
+  X,
+} from "lucide-react";
+
+import QRCode from "qrcode";
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+/* =========================================================
+   TYPES
+========================================================= */
+
+type UserRole =
+  | "ADMIN"
+  | "BAN_CHAP_HANH"
+  | "CHI_HOI_TRUONG"
+  | "HOI_VIEN";
+
+type CurrentUser = {
+  id:
+    string;
+
+  username:
+    string;
+
+  fullName:
+    string;
+
+  role:
+    UserRole;
+};
+
+type HoatDong = {
+  id?:
+    string;
+
+  _id?:
+    string;
+
+  maHoatDong:
+    string;
+
+  tenHoatDong:
+    string;
+
+  diaDiem?:
+    string;
+
+  thoiGianBatDau:
+    string;
+
+  thoiGianKetThuc:
+    string;
+
+  trangThai:
+    string;
+};
+
+type ChiHoi = {
+  _id?:
+    string;
+
+  id?:
+    string;
+
+  maChiHoi?:
+    string;
+
+  tenChiHoi?:
+    string;
+};
+
+type PhienQR = {
+  _id:
+    string;
+
+  token:
+    string;
+
+  hoatDongId:
+    | HoatDong
+    | string;
+
+  chiHoiId?:
+    | ChiHoi
+    | string
+    | null;
+
+  nguoiTaoTen:
+    string;
+
+  thoiGianBatDau:
+    string;
+
+  thoiGianHetHan:
+    string;
+
+  trangThai:
+    | "DANG_MO"
+    | "DA_DONG";
+
+  daHetHan?:
+    boolean;
+
+  dangMo?:
+    boolean;
+
+  soLuotDiemDanh?:
+    number;
+
+  createdAt?:
+    string;
+};
+
+type LuotDiemDanh = {
+  _id:
+    string;
+
+  hoiVienId:
+    string;
+
+  hoTen:
+    string;
+
+  maHoiVien:
+    string;
+
+  chiHoiId?:
+    | ChiHoi
+    | string
+    | null;
+
+  thoiGianDiemDanh:
+    string;
+};
+
+type ThongKeChiTiet = {
+  tongHopLe:
+    number;
+
+  daDiemDanh:
+    number;
+
+  chuaDiemDanh:
+    number;
+
+  tyLe:
+    number;
+};
+
+type ChiTietPhien = {
+  phien:
+    PhienQR;
+
+  thongKe:
+    ThongKeChiTiet;
+
+  luotDiemDanh:
+    LuotDiemDanh[];
+};
+
+type Message = {
+  type:
+    | "success"
+    | "error";
+
+  text:
+    string;
+};
+
+type ApiResponse = {
+  success:
+    boolean;
+
+  message?:
+    string;
+
+  data?:
+    unknown;
+
+  user?:
+    CurrentUser;
+
+  activities?:
+    HoatDong[];
+};
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+async function parseResponse(
+  response:
+    Response,
+): Promise<ApiResponse> {
+  const text =
+    await response.text();
+
+  if (!text.trim()) {
+    return {
+      success:
+        false,
+
+      message:
+        `Máy chủ không trả dữ liệu. HTTP ${response.status}`,
+    };
+  }
+
+  try {
+    return JSON.parse(
+      text,
+    ) as ApiResponse;
+  } catch {
+    return {
+      success:
+        false,
+
+      message:
+        `Dữ liệu máy chủ không hợp lệ. HTTP ${response.status}`,
+    };
+  }
+}
+
+function getId(
+  item:
+    HoatDong,
+) {
+  return (
+    item._id ||
+    item.id ||
+    ""
+  );
+}
+
+function getActivity(
+  item:
+    PhienQR,
+):
+  HoatDong | null {
+  return typeof item
+    .hoatDongId ===
+    "object"
+    ? item.hoatDongId
+    : null;
+}
+
+function getBranch(
+  item:
+    PhienQR,
+):
+  ChiHoi | null {
+  return item.chiHoiId &&
+    typeof item.chiHoiId ===
+      "object"
+    ? item.chiHoiId
+    : null;
+}
+
+function getCheckInBranch(
+  item:
+    LuotDiemDanh,
+):
+  ChiHoi | null {
+  return item.chiHoiId &&
+    typeof item.chiHoiId ===
+      "object"
+    ? item.chiHoiId
+    : null;
+}
+
+function formatDateTime(
+  value?:
+    string,
+) {
+  if (!value) {
+    return "—";
+  }
+
+  const date =
+    new Date(
+      value,
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat(
+    "vi-VN",
+    {
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+
+      second:
+        "2-digit",
+
+      day:
+        "2-digit",
+
+      month:
+        "2-digit",
+
+      year:
+        "numeric",
+    },
+  ).format(
+    date,
+  );
+}
+
+function getActivities(
+  result:
+    ApiResponse,
+) {
+  if (
+    Array.isArray(
+      result.activities,
+    )
+  ) {
+    return result.activities;
+  }
+
+  if (
+    Array.isArray(
+      result.data,
+    )
+  ) {
+    return result.data as
+      HoatDong[];
+  }
+
+  if (
+    result.data &&
+    typeof result.data ===
+      "object"
+  ) {
+    const object =
+      result.data as {
+        activities?:
+          HoatDong[];
+
+        data?:
+          HoatDong[];
+      };
+
+    if (
+      Array.isArray(
+        object.activities,
+      )
+    ) {
+      return object.activities;
+    }
+
+    if (
+      Array.isArray(
+        object.data,
+      )
+    ) {
+      return object.data;
+    }
+  }
+
+  return [];
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+export default function QuanLyDiemDanhQRPage() {
+  const [
+    currentUser,
+    setCurrentUser,
+  ] =
+    useState<
+      CurrentUser | null
+    >(
+      null,
+    );
+
+  const [
+    activities,
+    setActivities,
+  ] =
+    useState<
+      HoatDong[]
+    >([]);
+
+  const [
+    sessions,
+    setSessions,
+  ] =
+    useState<
+      PhienQR[]
+    >([]);
+
+  const [
+    selectedActivityId,
+    setSelectedActivityId,
+  ] =
+    useState(
+      "",
+    );
+
+  const [
+    minutes,
+    setMinutes,
+  ] =
+    useState(
+      15,
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(
+      true,
+    );
+
+  const [
+    creating,
+    setCreating,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
+    processingId,
+    setProcessingId,
+  ] =
+    useState<
+      string | null
+    >(
+      null,
+    );
+
+  const [
+    selectedSession,
+    setSelectedSession,
+  ] =
+    useState<
+      PhienQR | null
+    >(
+      null,
+    );
+
+  const [
+    qrImage,
+    setQrImage,
+  ] =
+    useState(
+      "",
+    );
+
+  const [
+    detail,
+    setDetail,
+  ] =
+    useState<
+      ChiTietPhien | null
+    >(
+      null,
+    );
+
+  const [
+    detailLoading,
+    setDetailLoading,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
+    message,
+    setMessage,
+  ] =
+    useState<
+      Message | null
+    >(
+      null,
+    );
+
+  /* =======================================================
+     LOAD MAIN
+  ======================================================= */
+
+  const loadData =
+    useCallback(
+      async () => {
+        try {
+          setLoading(
+            true,
+          );
+
+          const [
+            userResponse,
+            activityResponse,
+            qrResponse,
+          ] =
+            await Promise.all([
+              fetch(
+                "/api/auth/me",
+                {
+                  credentials:
+                    "include",
+
+                  cache:
+                    "no-store",
+                },
+              ),
+
+              fetch(
+                "/api/hoat-dong",
+                {
+                  credentials:
+                    "include",
+
+                  cache:
+                    "no-store",
+                },
+              ),
+
+              fetch(
+                "/api/diem-danh-qr",
+                {
+                  credentials:
+                    "include",
+
+                  cache:
+                    "no-store",
+                },
+              ),
+            ]);
+
+          const [
+            userResult,
+            activityResult,
+            qrResult,
+          ] =
+            await Promise.all([
+              parseResponse(
+                userResponse,
+              ),
+
+              parseResponse(
+                activityResponse,
+              ),
+
+              parseResponse(
+                qrResponse,
+              ),
+            ]);
+
+          if (
+            !userResponse.ok ||
+            !userResult.success
+          ) {
+            throw new Error(
+              userResult.message ||
+                "Không thể tải tài khoản",
+            );
+          }
+
+          const rawUser =
+            userResult.user ??
+            (
+              userResult.data &&
+              typeof userResult.data ===
+                "object"
+                ? (
+                    userResult.data as {
+                      user?:
+                        CurrentUser;
+                    }
+                  ).user
+                : null
+            );
+
+          if (!rawUser) {
+            throw new Error(
+              "Không tìm thấy thông tin tài khoản",
+            );
+          }
+
+          if (
+            rawUser.role ===
+            "HOI_VIEN"
+          ) {
+            throw new Error(
+              "Trang quản lý QR chỉ dành cho Ban quản lý",
+            );
+          }
+
+          setCurrentUser(
+            rawUser,
+          );
+
+          if (
+            activityResponse.ok &&
+            activityResult.success
+          ) {
+            setActivities(
+              getActivities(
+                activityResult,
+              ),
+            );
+          } else {
+            setActivities(
+              [],
+            );
+          }
+
+          if (
+            !qrResponse.ok ||
+            !qrResult.success
+          ) {
+            throw new Error(
+              qrResult.message ||
+                "Không thể tải phiên QR",
+            );
+          }
+
+          setSessions(
+            Array.isArray(
+              qrResult.data,
+            )
+              ? qrResult.data as
+                  PhienQR[]
+              : [],
+          );
+        } catch (
+          error
+        ) {
+          setMessage({
+            type:
+              "error",
+
+            text:
+              error instanceof
+                Error
+                ? error.message
+                : "Không thể tải dữ liệu",
+          });
+        } finally {
+          setLoading(
+            false,
+          );
+        }
+      },
+      [],
+    );
+
+  useEffect(
+    () => {
+      const timer =
+        window.setTimeout(
+          () => {
+            void loadData();
+          },
+          0,
+        );
+
+      return () => {
+        window.clearTimeout(
+          timer,
+        );
+      };
+    },
+    [
+      loadData,
+    ],
+  );
+
+  /* =======================================================
+     DETAIL
+  ======================================================= */
+
+  const loadDetail =
+    useCallback(
+      async (
+        sessionId:
+          string,
+
+        showLoader =
+          false,
+      ) => {
+        try {
+          if (
+            showLoader
+          ) {
+            setDetailLoading(
+              true,
+            );
+          }
+
+          const response =
+            await fetch(
+              `/api/diem-danh-qr/${sessionId}/chi-tiet`,
+              {
+                credentials:
+                  "include",
+
+                cache:
+                  "no-store",
+              },
+            );
+
+          const result =
+            await parseResponse(
+              response,
+            );
+
+          if (
+            !response.ok ||
+            !result.success
+          ) {
+            throw new Error(
+              result.message ||
+                "Không thể tải danh sách điểm danh",
+            );
+          }
+
+          const nextDetail =
+            result.data as
+              ChiTietPhien;
+
+          setDetail(
+            nextDetail,
+          );
+
+          /*
+           * Đồng bộ số lượt ở card
+           * mà không cần reload toàn trang.
+           */
+          setSessions(
+            (
+              current,
+            ) =>
+              current.map(
+                (
+                  item,
+                ) =>
+                  item._id ===
+                  sessionId
+                    ? {
+                        ...item,
+
+                        soLuotDiemDanh:
+                          nextDetail
+                            .thongKe
+                            .daDiemDanh,
+
+                        dangMo:
+                          nextDetail
+                            .phien
+                            .dangMo,
+
+                        daHetHan:
+                          nextDetail
+                            .phien
+                            .daHetHan,
+
+                        trangThai:
+                          nextDetail
+                            .phien
+                            .trangThai,
+                      }
+                    : item,
+              ),
+          );
+        } catch (
+          error
+        ) {
+          setMessage({
+            type:
+              "error",
+
+            text:
+              error instanceof
+                Error
+                ? error.message
+                : "Không thể tải chi tiết phiên QR",
+          });
+        } finally {
+          if (
+            showLoader
+          ) {
+            setDetailLoading(
+              false,
+            );
+          }
+        }
+      },
+      [],
+    );
+
+  /*
+   * Khi modal QR đang mở:
+   * cứ 3 giây lấy danh sách điểm danh mới.
+   */
+  useEffect(
+    () => {
+      if (
+        !selectedSession
+      ) {
+        return;
+      }
+
+      const sessionId =
+        selectedSession._id;
+
+      const firstTimer =
+        window.setTimeout(
+          () => {
+            void loadDetail(
+              sessionId,
+              true,
+            );
+          },
+          0,
+        );
+
+      const interval =
+        window.setInterval(
+          () => {
+            void loadDetail(
+              sessionId,
+              false,
+            );
+          },
+          3000,
+        );
+
+      return () => {
+        window.clearTimeout(
+          firstTimer,
+        );
+
+        window.clearInterval(
+          interval,
+        );
+      };
+    },
+    [
+      selectedSession,
+      loadDetail,
+    ],
+  );
+
+  /* =======================================================
+     ACTIVITIES
+  ======================================================= */
+
+  const runningActivities =
+    useMemo(
+      () =>
+        activities.filter(
+          (
+            item,
+          ) =>
+            item.trangThai ===
+            "DANG_DIEN_RA",
+        ),
+      [
+        activities,
+      ],
+    );
+
+  /* =======================================================
+     CREATE QR
+  ======================================================= */
+
+  async function createQR() {
+    if (
+      !selectedActivityId
+    ) {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          "Vui lòng chọn hoạt động",
+      });
+
+      return;
+    }
+
+    try {
+      setCreating(
+        true,
+      );
+
+      setMessage(
+        null,
+      );
+
+      const response =
+        await fetch(
+          "/api/diem-danh-qr",
+          {
+            method:
+              "POST",
+
+            credentials:
+              "include",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                hoatDongId:
+                  selectedActivityId,
+
+                soPhut:
+                  minutes,
+              }),
+          },
+        );
+
+      const result =
+        await parseResponse(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Không thể tạo QR",
+        );
+      }
+
+      setMessage({
+        type:
+          "success",
+
+        text:
+          result.message ||
+          "Đã tạo phiên QR",
+      });
+
+      const created =
+        result.data &&
+        typeof result.data ===
+          "object"
+          ? result.data as
+              PhienQR
+          : null;
+
+      await loadData();
+
+      if (created) {
+        await openSession(
+          created,
+        );
+      }
+    } catch (
+      error
+    ) {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          error instanceof
+            Error
+            ? error.message
+            : "Không thể tạo QR",
+      });
+    } finally {
+      setCreating(
+        false,
+      );
+    }
+  }
+
+  /* =======================================================
+     OPEN QR
+  ======================================================= */
+
+  async function openSession(
+    item:
+      PhienQR,
+  ) {
+    setSelectedSession(
+      item,
+    );
+
+    setDetail(
+      null,
+    );
+
+    setQrImage(
+      "",
+    );
+
+    try {
+      const url =
+        `${window.location.origin}/dashboard/diem-danh-qr/${item.token}`;
+
+      const dataUrl =
+        await QRCode.toDataURL(
+          url,
+          {
+            width:
+              420,
+
+            margin:
+              2,
+
+            errorCorrectionLevel:
+              "M",
+          },
+        );
+
+      setQrImage(
+        dataUrl,
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        error,
+      );
+
+      setMessage({
+        type:
+          "error",
+
+        text:
+          "Không thể tạo hình QR",
+      });
+    }
+  }
+
+  /* =======================================================
+     COPY
+  ======================================================= */
+
+  async function copyLink(
+    item:
+      PhienQR,
+  ) {
+    try {
+      const url =
+        `${window.location.origin}/dashboard/diem-danh-qr/${item.token}`;
+
+      await navigator
+        .clipboard
+        .writeText(
+          url,
+        );
+
+      setMessage({
+        type:
+          "success",
+
+        text:
+          "Đã sao chép đường dẫn điểm danh",
+      });
+    } catch {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          "Không thể sao chép đường dẫn",
+      });
+    }
+  }
+
+  /* =======================================================
+     CLOSE SESSION
+  ======================================================= */
+
+  async function closeSession(
+    id:
+      string,
+  ) {
+    try {
+      setProcessingId(
+        id,
+      );
+
+      const response =
+        await fetch(
+          "/api/diem-danh-qr",
+          {
+            method:
+              "PATCH",
+
+            credentials:
+              "include",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                id,
+
+                action:
+                  "DONG",
+              }),
+          },
+        );
+
+      const result =
+        await parseResponse(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Không thể đóng phiên QR",
+        );
+      }
+
+      setMessage({
+        type:
+          "success",
+
+        text:
+          result.message ||
+          "Đã đóng phiên QR",
+      });
+
+      await loadData();
+
+      if (
+        selectedSession?._id ===
+        id
+      ) {
+        await loadDetail(
+          id,
+          false,
+        );
+      }
+    } catch (
+      error
+    ) {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          error instanceof
+            Error
+            ? error.message
+            : "Không thể đóng phiên QR",
+      });
+    } finally {
+      setProcessingId(
+        null,
+      );
+    }
+  }
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
+
+  return (
+    <main className="min-h-full bg-[#f3f7fb] px-3 py-5 sm:px-5 lg:px-8 lg:py-8">
+      <div className="mx-auto max-w-[1500px]">
+        <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#12345B]">
+              Điểm danh hoạt động
+            </p>
+
+            <h1 className="mt-2 text-2xl font-bold text-slate-950 sm:text-3xl">
+              Quản lý điểm danh QR
+            </h1>
+
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Tạo QR, theo dõi Hội viên quét mã và kiểm soát điểm danh theo thời gian thực.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              void loadData()
+            }
+            disabled={
+              loading
+            }
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border bg-white px-4 text-sm font-semibold text-slate-700 disabled:opacity-50"
+          >
+            <RefreshCw
+              size={17}
+              className={
+                loading
+                  ? "animate-spin"
+                  : ""
+              }
+            />
+
+            Làm mới
+          </button>
+        </div>
+
+        {message && (
+          <div
+            className={`mb-5 flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+              message.type ===
+              "success"
+                ? "border-green-200 bg-green-50 text-green-700"
+                : "border-red-200 bg-red-50 text-red-700"
+            }`}
+          >
+            {message.text}
+
+            <button
+              type="button"
+              onClick={() =>
+                setMessage(
+                  null,
+                )
+              }
+            >
+              <X
+                size={16}
+              />
+            </button>
+          </div>
+        )}
+
+        <section className="mb-6 rounded-2xl border bg-white p-5 shadow-sm">
+          <h2 className="font-bold text-slate-900">
+            Mở phiên điểm danh mới
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Chỉ hoạt động đang diễn ra mới được mở QR.
+          </p>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_180px_auto]">
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Hoạt động
+              </label>
+
+              <select
+                value={
+                  selectedActivityId
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setSelectedActivityId(
+                    event.target.value,
+                  )
+                }
+                className="h-11 w-full rounded-xl border px-3 text-sm"
+              >
+                <option value="">
+                  Chọn hoạt động
+                </option>
+
+                {runningActivities.map(
+                  (
+                    item,
+                  ) => (
+                    <option
+                      key={
+                        getId(
+                          item,
+                        )
+                      }
+                      value={
+                        getId(
+                          item,
+                        )
+                      }
+                    >
+                      {item.maHoatDong}
+                      {" - "}
+                      {item.tenHoatDong}
+                    </option>
+                  ),
+                )}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Thời hạn
+              </label>
+
+              <select
+                value={
+                  minutes
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setMinutes(
+                    Number(
+                      event.target.value,
+                    ),
+                  )
+                }
+                className="h-11 w-full rounded-xl border px-3 text-sm"
+              >
+                <option value={5}>
+                  5 phút
+                </option>
+
+                <option value={10}>
+                  10 phút
+                </option>
+
+                <option value={15}>
+                  15 phút
+                </option>
+
+                <option value={30}>
+                  30 phút
+                </option>
+
+                <option value={60}>
+                  60 phút
+                </option>
+              </select>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                disabled={
+                  creating ||
+                  !selectedActivityId
+                }
+                onClick={() =>
+                  void createQR()
+                }
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#12345B] px-5 font-bold text-white disabled:opacity-50 lg:w-auto"
+              >
+                {creating ? (
+                  <Loader2
+                    size={17}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <QrCode
+                    size={17}
+                  />
+                )}
+
+                Tạo QR
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+          <div className="border-b p-5">
+            <h2 className="font-bold">
+              Các phiên điểm danh QR
+            </h2>
+
+            {currentUser && (
+              <p className="mt-1 text-sm text-slate-500">
+                {currentUser.fullName}
+              </p>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="flex min-h-64 items-center justify-center">
+              <Loader2
+                className="animate-spin text-[#12345B]"
+              />
+            </div>
+          ) : sessions.length ===
+            0 ? (
+            <div className="py-16 text-center text-slate-500">
+              Chưa có phiên QR.
+            </div>
+          ) : (
+            <div className="divide-y">
+              {sessions.map(
+                (
+                  item,
+                ) => {
+                  const activity =
+                    getActivity(
+                      item,
+                    );
+
+                  const branch =
+                    getBranch(
+                      item,
+                    );
+
+                  const active =
+                    item.dangMo ??
+                    (
+                      item.trangThai ===
+                        "DANG_MO" &&
+                      !item.daHetHan
+                    );
+
+                  return (
+                    <article
+                      key={
+                        item._id
+                      }
+                      className="p-5"
+                    >
+                      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
+                        <div>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-[#12345B]">
+                              {activity
+                                ?.maHoatDong ||
+                                "Hoạt động"}
+                            </span>
+
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                active
+                                  ? "bg-green-50 text-green-700"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {active
+                                ? "Đang mở"
+                                : item.daHetHan
+                                  ? "Đã hết hạn"
+                                  : "Đã đóng"}
+                            </span>
+                          </div>
+
+                          <h3 className="mt-3 font-bold">
+                            {activity
+                              ?.tenHoatDong ||
+                              "Chưa xác định"}
+                          </h3>
+
+                          <div className="mt-3 grid gap-2 text-sm text-slate-500 sm:grid-cols-2">
+                            <p className="flex items-center gap-2">
+                              <Clock3
+                                size={15}
+                              />
+
+                              {formatDateTime(
+                                item.thoiGianHetHan,
+                              )}
+                            </p>
+
+                            <p className="flex items-center gap-2">
+                              <MapPin
+                                size={15}
+                              />
+
+                              {activity
+                                ?.diaDiem ||
+                                "Chưa cập nhật"}
+                            </p>
+
+                            <p className="flex items-center gap-2">
+                              <UserCheck
+                                size={15}
+                              />
+
+                              {item.soLuotDiemDanh ||
+                                0}{" "}
+                              đã điểm danh
+                            </p>
+
+                            {branch && (
+                              <p className="flex items-center gap-2">
+                                <Users
+                                  size={15}
+                                />
+
+                                {branch.tenChiHoi ||
+                                  branch.maChiHoi}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void openSession(
+                                item,
+                              )
+                            }
+                            className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#12345B] px-4 text-sm font-semibold text-white"
+                          >
+                            <QrCode
+                              size={16}
+                            />
+
+                            QR & danh sách
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void copyLink(
+                                item,
+                              )
+                            }
+                            className="inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-sm font-semibold"
+                          >
+                            <Copy
+                              size={16}
+                            />
+
+                            Copy link
+                          </button>
+
+                          {active && (
+                            <button
+                              type="button"
+                              disabled={
+                                processingId ===
+                                item._id
+                              }
+                              onClick={() =>
+                                void closeSession(
+                                  item._id,
+                                )
+                              }
+                              className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-600"
+                            >
+                              <StopCircle
+                                size={16}
+                              />
+
+                              Đóng
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                },
+              )}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {selectedSession && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/60 sm:items-center sm:p-4">
+          <div className="max-h-[95vh] w-full max-w-5xl overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b bg-white p-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.15em] text-[#12345B]">
+                  Theo dõi điểm danh trực tiếp
+                </p>
+
+                <h2 className="mt-1 text-xl font-bold">
+                  {getActivity(
+                    selectedSession,
+                  )?.tenHoatDong ||
+                    "Điểm danh QR"}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSession(
+                    null,
+                  );
+
+                  setDetail(
+                    null,
+                  );
+
+                  setQrImage(
+                    "",
+                  );
+                }}
+              >
+                <X />
+              </button>
+            </div>
+
+            <div className="grid gap-6 p-5 lg:grid-cols-[330px_minmax(0,1fr)]">
+              <div>
+                <div className="rounded-2xl border p-4">
+                  {qrImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={
+                        qrImage
+                      }
+                      alt="QR điểm danh"
+                      className="mx-auto w-full"
+                    />
+                  ) : (
+                    <div className="flex h-[300px] items-center justify-center">
+                      <Loader2
+                        className="animate-spin"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <p className="mt-3 text-center text-xs text-slate-500">
+                  Hội viên quét mã này để điểm danh
+                </p>
+
+                <div className="mt-4 grid gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void copyLink(
+                        selectedSession,
+                      )
+                    }
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border text-sm font-semibold"
+                  >
+                    <Copy
+                      size={15}
+                    />
+
+                    Sao chép link
+                  </button>
+
+                  <a
+                    href={`/dashboard/diem-danh-qr/${selectedSession.token}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border text-sm font-semibold"
+                  >
+                    <ExternalLink
+                      size={15}
+                    />
+
+                    Mở trang điểm danh
+                  </a>
+                </div>
+              </div>
+
+              <div>
+                {detailLoading &&
+                !detail ? (
+                  <div className="flex min-h-80 items-center justify-center">
+                    <Loader2
+                      className="animate-spin"
+                    />
+                  </div>
+                ) : detail ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <StatCard
+                        label="Hợp lệ"
+                        value={
+                          detail
+                            .thongKe
+                            .tongHopLe
+                        }
+                      />
+
+                      <StatCard
+                        label="Đã điểm danh"
+                        value={
+                          detail
+                            .thongKe
+                            .daDiemDanh
+                        }
+                      />
+
+                      <StatCard
+                        label="Chưa điểm danh"
+                        value={
+                          detail
+                            .thongKe
+                            .chuaDiemDanh
+                        }
+                      />
+
+                      <StatCard
+                        label="Tỷ lệ"
+                        value={`${detail.thongKe.tyLe}%`}
+                      />
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-between">
+                      <div>
+                        <h3 className="font-bold">
+                          Hội viên đã quét QR
+                        </h3>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          Danh sách tự cập nhật mỗi 3 giây
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void loadDetail(
+                            selectedSession._id,
+                            true,
+                          )
+                        }
+                        className="rounded-lg border p-2"
+                      >
+                        <RefreshCw
+                          size={16}
+                          className={
+                            detailLoading
+                              ? "animate-spin"
+                              : ""
+                          }
+                        />
+                      </button>
+                    </div>
+
+                    {detail
+                      .luotDiemDanh
+                      .length ===
+                    0 ? (
+                      <div className="mt-4 rounded-xl border border-dashed py-12 text-center text-sm text-slate-500">
+                        Chưa có Hội viên nào quét QR.
+                      </div>
+                    ) : (
+                      <div className="mt-4 overflow-hidden rounded-xl border">
+                        <div className="hidden grid-cols-[55px_1fr_140px_180px] gap-3 border-b bg-slate-50 px-4 py-3 text-xs font-bold text-slate-500 md:grid">
+                          <span>
+                            STT
+                          </span>
+
+                          <span>
+                            Hội viên
+                          </span>
+
+                          <span>
+                            Chi hội
+                          </span>
+
+                          <span>
+                            Thời gian
+                          </span>
+                        </div>
+
+                        <div className="divide-y">
+                          {detail
+                            .luotDiemDanh
+                            .map(
+                              (
+                                item,
+                                index,
+                              ) => {
+                                const branch =
+                                  getCheckInBranch(
+                                    item,
+                                  );
+
+                                return (
+                                  <div
+                                    key={
+                                      item._id
+                                    }
+                                    className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[55px_1fr_140px_180px] md:items-center md:gap-3"
+                                  >
+                                    <span className="text-slate-400">
+                                      {index +
+                                        1}
+                                    </span>
+
+                                    <div>
+                                      <p className="font-semibold text-slate-900">
+                                        {
+                                          item.hoTen
+                                        }
+                                      </p>
+
+                                      <p className="text-xs text-slate-500">
+                                        {
+                                          item.maHoiVien
+                                        }
+                                      </p>
+                                    </div>
+
+                                    <span className="text-slate-600">
+                                      {branch
+                                        ?.tenChiHoi ||
+                                        branch
+                                          ?.maChiHoi ||
+                                        "—"}
+                                    </span>
+
+                                    <span className="text-slate-500">
+                                      {formatDateTime(
+                                        item.thoiGianDiemDanh,
+                                      )}
+                                    </span>
+                                  </div>
+                                );
+                              },
+                            )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-5 flex flex-wrap justify-end gap-2">
+                      {detail
+                        .phien
+                        .dangMo && (
+                        <button
+                          type="button"
+                          disabled={
+                            processingId ===
+                            selectedSession._id
+                          }
+                          onClick={() =>
+                            void closeSession(
+                              selectedSession._id,
+                            )
+                          }
+                          className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-200 px-4 text-sm font-semibold text-red-600"
+                        >
+                          <StopCircle
+                            size={16}
+                          />
+
+                          Đóng phiên QR
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+}: {
+  label:
+    string;
+
+  value:
+    string | number;
+}) {
+  return (
+    <div className="rounded-xl border bg-slate-50 p-3">
+      <p className="text-xs text-slate-500">
+        {label}
+      </p>
+
+      <p className="mt-1 text-xl font-bold text-slate-900">
+        {value}
+      </p>
+    </div>
+  );
+}

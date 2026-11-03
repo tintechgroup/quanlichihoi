@@ -1,0 +1,544 @@
+import {
+  Types,
+} from "mongoose";
+
+import {
+  NextResponse,
+} from "next/server";
+
+import {
+  connectDB,
+} from "@/lib/mongodb";
+
+import {
+  getCurrentSession,
+} from "@/lib/session";
+
+import DangKyHoatDong
+  from "@/models/DangKyHoatDong";
+
+import DangKyTapTheHoatDong
+  from "@/models/DangKyTapTheHoatDong";
+
+import HoiVien
+  from "@/models/HoiVien";
+
+import LuotDiemDanhQR
+  from "@/models/LuotDiemDanhQR";
+
+import PhienDiemDanhQR
+  from "@/models/PhienDiemDanhQR";
+
+import User
+  from "@/models/User";
+
+export const dynamic =
+  "force-dynamic";
+
+export const runtime =
+  "nodejs";
+
+type RouteContext = {
+  params:
+    Promise<{
+      id:
+        string;
+    }>;
+};
+
+const MANAGER_ROLES = [
+  "ADMIN",
+  "BAN_CHAP_HANH",
+  "CHI_HOI_TRUONG",
+];
+
+function errorResponse(
+  message:
+    string,
+
+  status =
+    400,
+) {
+  return NextResponse.json(
+    {
+      success:
+        false,
+
+      message,
+    },
+    {
+      status,
+    },
+  );
+}
+
+function getDangKyFields() {
+  const hoiVienField =
+    DangKyHoatDong.schema.path(
+      "hoiVienId",
+    )
+      ? "hoiVienId"
+      : "hoiVien";
+
+  const hoatDongField =
+    DangKyHoatDong.schema.path(
+      "hoatDongId",
+    )
+      ? "hoatDongId"
+      : "hoatDong";
+
+  const statusField =
+    DangKyHoatDong.schema.path(
+      "trangThai",
+    )
+      ? "trangThai"
+      : "trangThaiDangKy";
+
+  return {
+    hoiVienField,
+    hoatDongField,
+    statusField,
+  };
+}
+
+export async function GET(
+  _request:
+    Request,
+
+  context:
+    RouteContext,
+) {
+  try {
+    const session =
+      await getCurrentSession();
+
+    if (!session) {
+      return errorResponse(
+        "Bạn chưa đăng nhập",
+        401,
+      );
+    }
+
+    if (
+      !MANAGER_ROLES.includes(
+        session.role,
+      )
+    ) {
+      return errorResponse(
+        "Bạn không có quyền xem dữ liệu điểm danh QR",
+        403,
+      );
+    }
+
+    const {
+      id,
+    } =
+      await context.params;
+
+    if (
+      !Types.ObjectId.isValid(
+        id,
+      )
+    ) {
+      return errorResponse(
+        "Mã phiên QR không hợp lệ",
+      );
+    }
+
+    await connectDB();
+
+    const qrSession =
+      await PhienDiemDanhQR.findById(
+        id,
+      )
+        .populate(
+          "hoatDongId",
+          [
+            "_id",
+            "maHoatDong",
+            "tenHoatDong",
+            "diaDiem",
+            "thoiGianBatDau",
+            "thoiGianKetThuc",
+            "trangThai",
+          ].join(
+            " ",
+          ),
+        )
+        .populate(
+          "chiHoiId",
+          "_id maChiHoi tenChiHoi",
+        )
+        .lean();
+
+    if (!qrSession) {
+      return errorResponse(
+        "Không tìm thấy phiên QR",
+        404,
+      );
+    }
+
+    /*
+     * Chi hội trưởng chỉ được xem
+     * phiên QR thuộc Chi hội của mình.
+     */
+    if (
+      session.role ===
+      "CHI_HOI_TRUONG"
+    ) {
+      const user =
+        await User.findById(
+          session.userId,
+        )
+          .select(
+            "chiHoiId",
+          )
+          .lean();
+
+      if (
+        !user?.chiHoiId
+      ) {
+        return errorResponse(
+          "Tài khoản chưa được gán Chi hội",
+          403,
+        );
+      }
+
+      const qrChiHoi =
+        qrSession.chiHoiId &&
+        typeof qrSession
+          .chiHoiId ===
+          "object" &&
+        "_id" in
+          qrSession.chiHoiId
+          ? String(
+              qrSession
+                .chiHoiId
+                ._id,
+            )
+          : qrSession
+              .chiHoiId
+            ? String(
+                qrSession
+                  .chiHoiId,
+              )
+            : "";
+
+      if (
+        !qrChiHoi ||
+        qrChiHoi !==
+          String(
+            user.chiHoiId,
+          )
+      ) {
+        return errorResponse(
+          "Bạn không có quyền xem phiên QR này",
+          403,
+        );
+      }
+    }
+
+    const hoatDongId =
+      qrSession
+        .hoatDongId &&
+      typeof qrSession
+        .hoatDongId ===
+        "object" &&
+      "_id" in
+        qrSession.hoatDongId
+        ? new Types.ObjectId(
+            String(
+              qrSession
+                .hoatDongId
+                ._id,
+            ),
+          )
+        : new Types.ObjectId(
+            String(
+              qrSession
+                .hoatDongId,
+            ),
+          );
+
+    const qrChiHoiId =
+      qrSession.chiHoiId &&
+      typeof qrSession
+        .chiHoiId ===
+        "object" &&
+      "_id" in
+        qrSession.chiHoiId
+        ? new Types.ObjectId(
+            String(
+              qrSession
+                .chiHoiId
+                ._id,
+            ),
+          )
+        : qrSession
+            .chiHoiId
+          ? new Types.ObjectId(
+              String(
+                qrSession
+                  .chiHoiId,
+              ),
+            )
+          : null;
+
+    /* =====================================================
+       DANH SÁCH HỘI VIÊN HỢP LỆ
+    ===================================================== */
+
+    const eligibleIds =
+      new Set<string>();
+
+    /*
+     * Đăng ký tập thể đã được BCH tiếp nhận.
+     */
+    const collectiveFilter:
+      Record<
+        string,
+        unknown
+      > = {
+      hoatDongId,
+
+      trangThai:
+        "DA_TIEP_NHAN",
+    };
+
+    if (
+      qrChiHoiId
+    ) {
+      collectiveFilter.chiHoiId =
+        qrChiHoiId;
+    }
+
+    const collectiveRegistrations =
+      await DangKyTapTheHoatDong.find(
+        collectiveFilter,
+      )
+        .select(
+          "hoiVienIds",
+        )
+        .lean();
+
+    for (
+      const registration of
+      collectiveRegistrations
+    ) {
+      for (
+        const memberId of
+        registration.hoiVienIds ||
+        []
+      ) {
+        eligibleIds.add(
+          String(
+            memberId,
+          ),
+        );
+      }
+    }
+
+    /*
+     * Đăng ký cá nhân.
+     */
+    const {
+      hoiVienField,
+      hoatDongField,
+      statusField,
+    } =
+      getDangKyFields();
+
+    const individualRegistrations =
+      await DangKyHoatDong.find({
+        [hoatDongField]:
+          hoatDongId,
+
+        [statusField]: {
+          $in: [
+            "DA_DANG_KY",
+            "DA_THAM_GIA",
+          ],
+        },
+      })
+        .select(
+          hoiVienField,
+        )
+        .lean();
+
+    const individualIds =
+      individualRegistrations
+        .map(
+          (
+            item,
+          ) =>
+            String(
+              (
+                item as Record<
+                  string,
+                  unknown
+                >
+              )[
+                hoiVienField
+              ] ||
+                "",
+            ),
+        )
+        .filter(
+          Boolean,
+        );
+
+    if (
+      qrChiHoiId &&
+      individualIds.length >
+        0
+    ) {
+      /*
+       * QR theo Chi hội:
+       * chỉ tính đăng ký cá nhân
+       * thuộc đúng Chi hội.
+       */
+      const members =
+        await HoiVien.find({
+          _id: {
+            $in:
+              individualIds,
+          },
+
+          chiHoiId:
+            qrChiHoiId,
+        })
+          .select(
+            "_id",
+          )
+          .lean();
+
+      for (
+        const member of
+        members
+      ) {
+        eligibleIds.add(
+          String(
+            member._id,
+          ),
+        );
+      }
+    } else {
+      for (
+        const memberId of
+        individualIds
+      ) {
+        eligibleIds.add(
+          memberId,
+        );
+      }
+    }
+
+    /* =====================================================
+       LƯỢT ĐÃ QUÉT
+    ===================================================== */
+
+    const checkIns =
+      await LuotDiemDanhQR.find({
+        phienId:
+          new Types.ObjectId(
+            id,
+          ),
+      })
+        .populate(
+          "chiHoiId",
+          "_id maChiHoi tenChiHoi",
+        )
+        .sort({
+          thoiGianDiemDanh:
+            -1,
+        })
+        .lean();
+
+    const daDiemDanh =
+      checkIns.length;
+
+    const tongHopLe =
+      eligibleIds.size;
+
+    const chuaDiemDanh =
+      Math.max(
+        tongHopLe -
+          daDiemDanh,
+        0,
+      );
+
+    const now =
+      Date.now();
+
+    const expired =
+      new Date(
+        qrSession
+          .thoiGianHetHan,
+      ).getTime() <=
+      now;
+
+    return NextResponse.json({
+      success:
+        true,
+
+      data: {
+        phien: {
+          ...qrSession,
+
+          daHetHan:
+            expired,
+
+          dangMo:
+            qrSession
+              .trangThai ===
+              "DANG_MO" &&
+            !expired,
+        },
+
+        thongKe: {
+          tongHopLe,
+
+          daDiemDanh,
+
+          chuaDiemDanh,
+
+          tyLe:
+            tongHopLe >
+            0
+              ? Number(
+                  (
+                    (
+                      daDiemDanh /
+                      tongHopLe
+                    ) *
+                    100
+                  ).toFixed(
+                    1,
+                  ),
+                )
+              : 0,
+        },
+
+        luotDiemDanh:
+          checkIns,
+      },
+    });
+  } catch (
+    error
+  ) {
+    console.error(
+      "GET /api/diem-danh-qr/[id]/chi-tiet:",
+      error,
+    );
+
+    return errorResponse(
+      process.env.NODE_ENV ===
+        "development" &&
+      error instanceof
+        Error
+        ? error.message
+        : "Không thể tải chi tiết phiên QR",
+      500,
+    );
+  }
+}

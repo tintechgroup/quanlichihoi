@@ -21,7 +21,9 @@ import {
 import User from "@/models/User";
 
 import YeuCauHoTro, {
-  TrangThaiHoTro,
+  type ITepDinhKemHoTro,
+  type TrangThaiHoTro,
+  type VaiTroNguoiGui,
 } from "@/models/YeuCauHoTro";
 
 export const dynamic =
@@ -51,6 +53,12 @@ type PatchBody = {
 
   trangThai?:
     unknown;
+
+  tepDinhKem?:
+    unknown;
+
+  danhDauDaXuLy?:
+    unknown;
 };
 
 /* =========================================================
@@ -59,13 +67,28 @@ type PatchBody = {
 
 const VALID_STATUSES:
   TrangThaiHoTro[] = [
-  "MOI",
-  "DA_TIEP_NHAN",
-  "DANG_XU_LY",
-  "CHO_BO_SUNG",
-  "DA_XU_LY",
-  "DONG",
-];
+    "MOI",
+    "DA_TIEP_NHAN",
+    "DANG_XU_LY",
+    "CHO_BO_SUNG",
+    "DA_XU_LY",
+    "DONG",
+  ];
+
+const MAX_FILES =
+  5;
+
+const MAX_FILE_SIZE =
+  10 * 1024 * 1024;
+
+const ALLOWED_EXTENSIONS =
+  new Set([
+    "png",
+    "jpg",
+    "jpeg",
+    "webp",
+    "pdf",
+  ]);
 
 /* =========================================================
    HELPERS
@@ -73,8 +96,7 @@ const VALID_STATUSES:
 
 function errorResponse(
   message: string,
-  status =
-    400,
+  status = 400,
 ) {
   return NextResponse.json(
     {
@@ -95,14 +117,6 @@ function normalizeLegacyArrays(
       typeof YeuCauHoTro
     >,
 ) {
-  /*
-   * Ticket cũ được tạo trước khi bổ sung
-   * các field mới có thể chưa có mảng này.
-   *
-   * Nếu gọi .push() trực tiếp sẽ phát sinh:
-   * Cannot read properties of undefined (reading 'push')
-   */
-
   if (
     !Array.isArray(
       ticket.phanHoi,
@@ -143,8 +157,171 @@ function isManagerRole(
   );
 }
 
+function getExtension(
+  filename: string,
+) {
+  return (
+    filename
+      .split(".")
+      .pop()
+      ?.toLowerCase() ||
+    ""
+  );
+}
+
+function parseAttachments(
+  value: unknown,
+  userId: string,
+):
+  ITepDinhKemHoTro[] {
+  if (
+    value ===
+      undefined ||
+    value ===
+      null
+  ) {
+    return [];
+  }
+
+  if (
+    !Array.isArray(
+      value,
+    )
+  ) {
+    throw new Error(
+      "Danh sách tệp đính kèm không hợp lệ",
+    );
+  }
+
+  if (
+    value.length >
+    MAX_FILES
+  ) {
+    throw new Error(
+      `Mỗi phản hồi chỉ được đính kèm tối đa ${MAX_FILES} tệp`,
+    );
+  }
+
+  return value.map(
+    (
+      raw,
+      index,
+    ) => {
+      if (
+        !raw ||
+        typeof raw !==
+          "object"
+      ) {
+        throw new Error(
+          `Tệp đính kèm thứ ${index + 1} không hợp lệ`,
+        );
+      }
+
+      const item =
+        raw as Record<
+          string,
+          unknown
+        >;
+
+      const tenTep =
+        typeof item.tenTep ===
+        "string"
+          ? item.tenTep.trim()
+          : "";
+
+      const duongDan =
+        typeof item.duongDan ===
+        "string"
+          ? item.duongDan.trim()
+          : "";
+
+      const pathname =
+        typeof item.pathname ===
+        "string"
+          ? item.pathname.trim()
+          : "";
+
+      const mimeType =
+        typeof item.mimeType ===
+        "string"
+          ? item.mimeType.trim()
+          : "";
+
+      const kichThuoc =
+        Number(
+          item.kichThuoc ||
+            0,
+        );
+
+      if (
+        !tenTep ||
+        !duongDan ||
+        !pathname
+      ) {
+        throw new Error(
+          `Tệp đính kèm thứ ${index + 1} thiếu thông tin`,
+        );
+      }
+
+      const extension =
+        getExtension(
+          tenTep,
+        );
+
+      if (
+        !ALLOWED_EXTENSIONS.has(
+          extension,
+        )
+      ) {
+        throw new Error(
+          `Tệp "${tenTep}" không đúng định dạng cho phép`,
+        );
+      }
+
+      if (
+        !Number.isFinite(
+          kichThuoc,
+        ) ||
+        kichThuoc <
+          0 ||
+        kichThuoc >
+          MAX_FILE_SIZE
+      ) {
+        throw new Error(
+          `Dung lượng tệp "${tenTep}" không hợp lệ`,
+        );
+      }
+
+      /*
+       * Tệp của phản hồi bắt buộc phải là
+       * tệp vừa upload bởi chính tài khoản hiện tại.
+       *
+       * Upload route lưu dạng:
+       * ho-tro/<userId>/...
+       */
+      if (
+        !pathname.startsWith(
+          `ho-tro/${userId}/`,
+        )
+      ) {
+        throw new Error(
+          `Bạn không có quyền sử dụng tệp "${tenTep}"`,
+        );
+      }
+
+      return {
+        tenTep,
+        duongDan,
+        pathname,
+        mimeType,
+        kichThuoc,
+      };
+    },
+  );
+}
+
 /* =========================================================
-   GET /api/ho-tro/[id]
+   GET
 ========================================================= */
 
 export async function GET(
@@ -177,7 +354,6 @@ export async function GET(
     ) {
       return errorResponse(
         "Mã yêu cầu không hợp lệ",
-        400,
       );
     }
 
@@ -262,30 +438,20 @@ export async function GET(
       error,
     );
 
-    return NextResponse.json(
-      {
-        success:
-          false,
-
-        message:
-          process.env.NODE_ENV ===
-          "development"
-            ? error instanceof
-              Error
-              ? error.message
-              : "Không thể tải yêu cầu hỗ trợ"
-            : "Không thể tải yêu cầu hỗ trợ",
-      },
-      {
-        status:
-          500,
-      },
+    return errorResponse(
+      process.env.NODE_ENV ===
+        "development" &&
+      error instanceof
+        Error
+        ? error.message
+        : "Không thể tải yêu cầu hỗ trợ",
+      500,
     );
   }
 }
 
 /* =========================================================
-   PATCH /api/ho-tro/[id]
+   PATCH
 ========================================================= */
 
 export async function PATCH(
@@ -318,7 +484,6 @@ export async function PATCH(
     ) {
       return errorResponse(
         "Mã yêu cầu không hợp lệ",
-        400,
       );
     }
 
@@ -327,11 +492,11 @@ export async function PATCH(
 
     try {
       body =
-        await request.json();
+        await request.json() as
+          PatchBody;
     } catch {
       return errorResponse(
         "Dữ liệu gửi lên không hợp lệ",
-        400,
       );
     }
 
@@ -344,7 +509,6 @@ export async function PATCH(
     if (!action) {
       return errorResponse(
         "Thiếu thao tác cần thực hiện",
-        400,
       );
     }
 
@@ -384,11 +548,6 @@ export async function PATCH(
       );
     }
 
-    /*
-     * Quan trọng:
-     * đảm bảo dữ liệu cũ luôn có đủ mảng
-     * trước khi gọi .push().
-     */
     normalizeLegacyArrays(
       ticket,
     );
@@ -412,8 +571,12 @@ export async function PATCH(
       );
     }
 
+    const currentRole =
+      currentUser.role as
+        VaiTroNguoiGui;
+
     /* =====================================================
-       ACTION: ADD_REPLY
+       ADD REPLY
     ===================================================== */
 
     if (
@@ -426,7 +589,6 @@ export async function PATCH(
       ) {
         return errorResponse(
           "Yêu cầu đã đóng, không thể phản hồi thêm",
-          400,
         );
       }
 
@@ -436,29 +598,47 @@ export async function PATCH(
           ? body.noiDung.trim()
           : "";
 
-      if (!noiDung) {
-        return errorResponse(
-          "Vui lòng nhập nội dung phản hồi",
-          400,
-        );
-      }
-
       if (
         noiDung.length >
         3000
       ) {
         return errorResponse(
           "Nội dung phản hồi không được vượt quá 3000 ký tự",
-          400,
+        );
+      }
+
+      let tepDinhKem:
+        ITepDinhKemHoTro[];
+
+      try {
+        tepDinhKem =
+          parseAttachments(
+            body.tepDinhKem,
+            currentUser._id.toString(),
+          );
+      } catch (
+        error
+      ) {
+        return errorResponse(
+          error instanceof
+            Error
+            ? error.message
+            : "Tệp đính kèm không hợp lệ",
+        );
+      }
+
+      if (
+        !noiDung &&
+        tepDinhKem.length ===
+          0
+      ) {
+        return errorResponse(
+          "Vui lòng nhập nội dung hoặc đính kèm ít nhất một tệp",
         );
       }
 
       const oldStatus =
         ticket.trangThai;
-
-      /* ===============================================
-         ADD MESSAGE
-      =============================================== */
 
       ticket.phanHoi.push({
         nguoiGuiId:
@@ -468,25 +648,21 @@ export async function PATCH(
           currentUser.fullName,
 
         vaiTro:
-          currentUser.role,
+          currentRole,
 
         noiDung,
+
+        tepDinhKem,
 
         createdAt:
           new Date(),
       });
 
-      /* ===============================================
-         MANAGER AUTO TAKE OWNERSHIP
-      =============================================== */
+      /* ===================================================
+         AUTO STATUS
+      =================================================== */
 
-      if (
-        isManager
-      ) {
-        /*
-         * Khi BCH/Admin phản hồi lần đầu,
-         * tự nhận là người xử lý.
-         */
+      if (isManager) {
         if (
           !ticket.nguoiXuLyId
         ) {
@@ -497,48 +673,53 @@ export async function PATCH(
             currentUser.fullName;
         }
 
-        /*
-         * Ticket mới / đã tiếp nhận:
-         * chuyển sang đang xử lý.
-         */
-        if (
-          ticket.trangThai ===
-            "MOI" ||
-          ticket.trangThai ===
-            "DA_TIEP_NHAN"
-        ) {
-          ticket.trangThai =
-            "DANG_XU_LY";
-        }
-
         if (
           !ticket.thoiGianTiepNhan
         ) {
           ticket.thoiGianTiepNhan =
             new Date();
         }
-      }
 
-      /* ===============================================
-         OWNER PROVIDES MORE INFORMATION
-      =============================================== */
+        /*
+         * Có thể chọn "Gửi & hoàn tất".
+         */
+        if (
+          body.danhDauDaXuLy ===
+          true
+        ) {
+          ticket.trangThai =
+            "DA_XU_LY";
 
-      if (
-        !isManager &&
+          ticket.thoiGianXuLyXong =
+            new Date();
+        } else if (
+          ticket.trangThai ===
+            "MOI" ||
+          ticket.trangThai ===
+            "DA_TIEP_NHAN" ||
+          ticket.trangThai ===
+            "CHO_BO_SUNG"
+        ) {
+          ticket.trangThai =
+            "DANG_XU_LY";
+
+          ticket.thoiGianXuLyXong =
+            null;
+        }
+      } else if (
         ticket.trangThai ===
-          "CHO_BO_SUNG"
+        "CHO_BO_SUNG"
       ) {
         /*
-         * Người gửi đã bổ sung thông tin,
-         * ticket quay lại trạng thái đang xử lý.
+         * Người gửi bổ sung xong thì đưa lại
+         * về hàng chờ xử lý.
          */
         ticket.trangThai =
           "DANG_XU_LY";
-      }
 
-      /* ===============================================
-         HISTORY
-      =============================================== */
+        ticket.thoiGianXuLyXong =
+          null;
+      }
 
       ticket.lichSuXuLy.push({
         nguoiThucHienId:
@@ -548,7 +729,7 @@ export async function PATCH(
           currentUser.fullName,
 
         vaiTro:
-          currentUser.role,
+          currentRole,
 
         hanhDong:
           "PHAN_HOI",
@@ -560,23 +741,34 @@ export async function PATCH(
           ticket.trangThai,
 
         ghiChu:
-          noiDung.length >
-          200
-            ? `${noiDung.slice(
-                0,
-                200,
-              )}...`
-            : noiDung,
+          [
+            noiDung
+              ? noiDung.length >
+                180
+                ? `${noiDung.slice(
+                    0,
+                    180,
+                  )}...`
+                : noiDung
+              : "Gửi tệp đính kèm",
+
+            tepDinhKem.length >
+            0
+              ? `${tepDinhKem.length} tệp đính kèm`
+              : "",
+          ]
+            .filter(
+              Boolean,
+            )
+            .join(
+              " · ",
+            ),
 
         createdAt:
           new Date(),
       });
 
       await ticket.save();
-
-      /* ===============================================
-         SYSTEM LOG
-      =============================================== */
 
       await writeSystemLog({
         userId:
@@ -620,6 +812,13 @@ export async function PATCH(
 
           manager:
             isManager,
+
+          soTepDinhKem:
+            tepDinhKem.length,
+
+          danhDauDaXuLy:
+            body.danhDauDaXuLy ===
+            true,
         },
 
         ipAddress:
@@ -638,7 +837,10 @@ export async function PATCH(
           true,
 
         message:
-          "Đã gửi phản hồi",
+          body.danhDauDaXuLy ===
+            true
+            ? "Đã gửi phản hồi và đánh dấu yêu cầu đã xử lý"
+            : "Đã gửi phản hồi",
 
         data:
           ticket,
@@ -646,7 +848,7 @@ export async function PATCH(
     }
 
     /* =====================================================
-       ACTION: UPDATE_STATUS
+       UPDATE STATUS
     ===================================================== */
 
     if (
@@ -660,32 +862,30 @@ export async function PATCH(
         );
       }
 
-      const newStatus =
+      const rawStatus =
         typeof body.trangThai ===
         "string"
-          ? body.trangThai.trim() as
-              TrangThaiHoTro
+          ? body.trangThai.trim()
           : "";
 
       if (
+        !rawStatus ||
         !VALID_STATUSES.includes(
-          newStatus as
-            TrangThaiHoTro,
+          rawStatus as TrangThaiHoTro,
         )
       ) {
         return errorResponse(
           "Trạng thái không hợp lệ",
-          400,
         );
       }
+
+      const newStatus =
+        rawStatus as
+          TrangThaiHoTro;
 
       const oldStatus =
         ticket.trangThai;
 
-      /*
-       * Không ghi history rác nếu trạng thái
-       * thực tế không thay đổi.
-       */
       if (
         oldStatus ===
         newStatus
@@ -702,27 +902,15 @@ export async function PATCH(
         });
       }
 
-      /* ===============================================
-         ASSIGN PROCESSOR
-      =============================================== */
-
       ticket.nguoiXuLyId =
         currentUser._id;
 
       ticket.nguoiXuLyTen =
         currentUser.fullName;
 
-      /* ===============================================
-         APPLY NEW STATUS
-      =============================================== */
-
       ticket.trangThai =
         newStatus as
           TrangThaiHoTro;
-
-      /* ===============================================
-         RECEIVE TIME
-      =============================================== */
 
       if (
         !ticket.thoiGianTiepNhan &&
@@ -733,10 +921,6 @@ export async function PATCH(
           new Date();
       }
 
-      /*
-       * Nếu manager chuyển ticket về MOI
-       * thì coi như chưa tiếp nhận lại.
-       */
       if (
         newStatus ===
         "MOI"
@@ -744,10 +928,6 @@ export async function PATCH(
         ticket.thoiGianTiepNhan =
           null;
       }
-
-      /* ===============================================
-         COMPLETED TIME
-      =============================================== */
 
       if (
         newStatus ===
@@ -759,17 +939,9 @@ export async function PATCH(
         oldStatus ===
           "DA_XU_LY"
       ) {
-        /*
-         * Ticket đã xử lý nhưng được mở lại
-         * thì xóa thời điểm hoàn thành cũ.
-         */
         ticket.thoiGianXuLyXong =
           null;
       }
-
-      /* ===============================================
-         CLOSED TIME
-      =============================================== */
 
       if (
         newStatus ===
@@ -778,11 +950,6 @@ export async function PATCH(
         ticket.thoiGianDong =
           new Date();
 
-        /*
-         * Có thể đóng trực tiếp từ DANG_XU_LY.
-         * Trong trường hợp chưa ghi thời điểm xử lý xong,
-         * đánh dấu tại thời điểm đóng.
-         */
         if (
           !ticket.thoiGianXuLyXong
         ) {
@@ -793,9 +960,6 @@ export async function PATCH(
         oldStatus ===
           "DONG"
       ) {
-        /*
-         * Mở lại ticket.
-         */
         ticket.thoiGianDong =
           null;
 
@@ -807,10 +971,6 @@ export async function PATCH(
             null;
         }
       }
-
-      /* ===============================================
-         DETERMINE HISTORY ACTION
-      =============================================== */
 
       let historyAction:
         | "TIEP_NHAN"
@@ -847,10 +1007,6 @@ export async function PATCH(
           "MO_LAI";
       }
 
-      /* ===============================================
-         HISTORY
-      =============================================== */
-
       ticket.lichSuXuLy.push({
         nguoiThucHienId:
           currentUser._id,
@@ -859,7 +1015,7 @@ export async function PATCH(
           currentUser.fullName,
 
         vaiTro:
-          currentUser.role,
+          currentRole,
 
         hanhDong:
           historyAction,
@@ -868,8 +1024,7 @@ export async function PATCH(
           oldStatus,
 
         trangThaiMoi:
-          newStatus as
-            TrangThaiHoTro,
+          newStatus,
 
         ghiChu:
           `Chuyển trạng thái từ ${oldStatus} sang ${newStatus}`,
@@ -879,10 +1034,6 @@ export async function PATCH(
       });
 
       await ticket.save();
-
-      /* ===============================================
-         SYSTEM LOG
-      =============================================== */
 
       await writeSystemLog({
         userId:
@@ -904,7 +1055,7 @@ export async function PATCH(
           "HO_TRO",
 
         description:
-          `${currentUser.fullName} cập nhật trạng thái yêu cầu ${ticket.maYeuCau}: ${oldStatus} → ${newStatus}`,
+          `${currentUser.fullName} cập nhật trạng thái yêu cầu hỗ trợ ${ticket.maYeuCau}`,
 
         targetId:
           ticket._id.toString(),
@@ -922,12 +1073,6 @@ export async function PATCH(
           oldStatus,
 
           newStatus,
-
-          nguoiXuLyId:
-            currentUser._id.toString(),
-
-          nguoiXuLyTen:
-            currentUser.fullName,
         },
 
         ipAddress:
@@ -953,13 +1098,8 @@ export async function PATCH(
       });
     }
 
-    /* =====================================================
-       INVALID ACTION
-    ===================================================== */
-
     return errorResponse(
-      "Thao tác không hợp lệ",
-      400,
+      "Thao tác không được hỗ trợ",
     );
   } catch (
     error
@@ -969,24 +1109,30 @@ export async function PATCH(
       error,
     );
 
-    return NextResponse.json(
-      {
-        success:
-          false,
+    if (
+      error instanceof
+      mongoose.Error
+        .ValidationError
+    ) {
+      const first =
+        Object.values(
+          error.errors,
+        )[0];
 
-        message:
-          process.env.NODE_ENV ===
-          "development"
-            ? error instanceof
-              Error
-              ? error.message
-              : "Không thể xử lý yêu cầu hỗ trợ"
-            : "Không thể xử lý yêu cầu hỗ trợ",
-      },
-      {
-        status:
-          500,
-      },
+      return errorResponse(
+        first?.message ||
+          "Dữ liệu không hợp lệ",
+      );
+    }
+
+    return errorResponse(
+      process.env.NODE_ENV ===
+        "development" &&
+      error instanceof
+        Error
+        ? error.message
+        : "Không thể cập nhật yêu cầu hỗ trợ",
+      500,
     );
   }
 }

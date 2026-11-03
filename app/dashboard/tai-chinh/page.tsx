@@ -375,7 +375,8 @@ export default function TaiChinhPage() {
 
           <Link
             href="/dashboard/tai-chinh/hoi-phi"
-            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
+            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-[#123b68] px-4 py-2.5 text-sm font-medium !text-white transition hover:bg-[#0d3158]"
+            style={{ color: "#ffffff" }}
           >
             Quản lý hội phí
           </Link>
@@ -425,8 +426,7 @@ export default function TaiChinhPage() {
           </div>
 
           <p className="mt-3 text-xs text-slate-400">
-            {tongQuan.soKhoanThu} khoản
-            thu
+            {tongQuan.soKhoanThu} khoản thu
           </p>
         </div>
 
@@ -451,8 +451,7 @@ export default function TaiChinhPage() {
           </div>
 
           <p className="mt-3 text-xs text-slate-400">
-            {tongQuan.soKhoanChi} khoản
-            chi
+            {tongQuan.soKhoanChi} khoản chi
           </p>
         </div>
 
@@ -501,8 +500,7 @@ export default function TaiChinhPage() {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Ghi nhận khoản thu hoặc
-              chi mới.
+              Ghi nhận khoản thu hoặc chi mới.
             </p>
           </div>
 
@@ -520,8 +518,7 @@ export default function TaiChinhPage() {
                 value={loai}
                 onChange={(event) =>
                   setLoai(
-                    event.target
-                      .value as
+                    event.target.value as
                       | "THU"
                       | "CHI",
                   )
@@ -554,9 +551,7 @@ export default function TaiChinhPage() {
                 inputMode="numeric"
                 value={soTien}
                 onChange={(event) =>
-                  setSoTien(
-                    event.target.value,
-                  )
+                  setSoTien(event.target.value)
                 }
                 placeholder="Ví dụ: 500000"
                 required
@@ -586,9 +581,7 @@ export default function TaiChinhPage() {
                 type="text"
                 value={noiDung}
                 onChange={(event) =>
-                  setNoiDung(
-                    event.target.value,
-                  )
+                  setNoiDung(event.target.value)
                 }
                 placeholder={
                   loai === "THU"
@@ -614,9 +607,7 @@ export default function TaiChinhPage() {
                 type="date"
                 value={ngayGiaoDich}
                 onChange={(event) =>
-                  setNgayGiaoDich(
-                    event.target.value,
-                  )
+                  setNgayGiaoDich(event.target.value)
                 }
                 required
                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -635,9 +626,7 @@ export default function TaiChinhPage() {
                 id="ghiChu"
                 value={ghiChu}
                 onChange={(event) =>
-                  setGhiChu(
-                    event.target.value,
-                  )
+                  setGhiChu(event.target.value)
                 }
                 rows={3}
                 maxLength={500}
@@ -673,8 +662,7 @@ export default function TaiChinhPage() {
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                Danh sách các khoản thu,
-                chi đã ghi nhận.
+                Danh sách các khoản thu, chi đã ghi nhận.
               </p>
             </div>
 
@@ -694,8 +682,7 @@ export default function TaiChinhPage() {
 
           {loading ? (
             <div className="p-8 text-center text-sm text-slate-500">
-              Đang tải dữ liệu tài
-              chính...
+              Đang tải dữ liệu tài chính...
             </div>
           ) : giaoDich.length === 0 ? (
             <div className="p-8 text-center sm:p-10">
@@ -704,109 +691,92 @@ export default function TaiChinhPage() {
               </p>
 
               <p className="mt-1 text-sm text-slate-500">
-                Hãy thêm khoản thu
-                hoặc chi đầu tiên.
+                Hãy thêm khoản thu hoặc chi đầu tiên.
               </p>
             </div>
           ) : (
             <>
               {/* MOBILE */}
               <div className="divide-y divide-slate-100 md:hidden">
-                {giaoDich.map(
-                  (item) => {
-                    const isThu =
-                      item.loai ===
-                      "THU";
+                {giaoDich.map((item) => {
+                  const isThu =
+                    item.loai === "THU";
 
-                    const chiHoiName =
-                      getChiHoiName(
-                        item.chiHoiId,
-                      );
+                  const chiHoiName =
+                    getChiHoiName(item.chiHoiId);
 
-                    return (
-                      <div
-                        key={item._id}
-                        className="space-y-3 p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="break-words font-medium text-slate-900">
-                              {
-                                item.noiDung
-                              }
-                            </p>
+                  return (
+                    <div
+                      key={item._id}
+                      className="space-y-3 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="break-words font-medium text-slate-900">
+                            {item.noiDung}
+                          </p>
 
-                            <p className="mt-1 text-xs text-slate-500">
-                              {formatDate(
-                                item.ngayGiaoDich,
-                              )}
-                            </p>
-                          </div>
-
-                          <span
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                              isThu
-                                ? "bg-green-50 text-green-700"
-                                : "bg-red-50 text-red-700"
-                            }`}
-                          >
-                            {isThu
-                              ? "Thu"
-                              : "Chi"}
-                          </span>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatDate(
+                              item.ngayGiaoDich,
+                            )}
+                          </p>
                         </div>
 
-                        <p
-                          className={`text-lg font-bold ${
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
                             isThu
-                              ? "text-green-600"
-                              : "text-red-600"
+                              ? "bg-green-50 text-green-700"
+                              : "bg-red-50 text-red-700"
                           }`}
                         >
-                          {isThu
-                            ? "+"
-                            : "-"}
-                          {formatMoney(
-                            item.soTien,
-                          )}
-                        </p>
+                          {isThu ? "Thu" : "Chi"}
+                        </span>
+                      </div>
 
-                        <div className="grid grid-cols-2 gap-3 text-xs">
-                          <div>
-                            <p className="text-slate-400">
-                              Phạm vi
-                            </p>
+                      <p
+                        className={`text-lg font-bold ${
+                          isThu
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {isThu ? "+" : "-"}
+                        {formatMoney(item.soTien)}
+                      </p>
 
-                            <p className="mt-1 font-medium text-slate-700">
-                              {item.phamVi ===
-                              "CHI_HOI"
-                                ? chiHoiName ||
-                                  "Chi hội"
-                                : "Liên Chi hội"}
-                            </p>
-                          </div>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <p className="text-slate-400">
+                            Phạm vi
+                          </p>
 
-                          <div>
-                            <p className="text-slate-400">
-                              Người tạo
-                            </p>
-
-                            <p className="mt-1 font-medium text-slate-700">
-                              {item.nguoiTaoTen ||
-                                "-"}
-                            </p>
-                          </div>
+                          <p className="mt-1 font-medium text-slate-700">
+                            {item.phamVi === "CHI_HOI"
+                              ? chiHoiName || "Chi hội"
+                              : "Liên Chi hội"}
+                          </p>
                         </div>
 
-                        {item.ghiChu && (
-                          <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-                            {item.ghiChu}
-                          </div>
-                        )}
+                        <div>
+                          <p className="text-slate-400">
+                            Người tạo
+                          </p>
+
+                          <p className="mt-1 font-medium text-slate-700">
+                            {item.nguoiTaoTen || "-"}
+                          </p>
+                        </div>
                       </div>
-                    );
-                  },
-                )}
+
+                      {item.ghiChu && (
+                        <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                          {item.ghiChu}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* DESKTOP */}
@@ -841,93 +811,73 @@ export default function TaiChinhPage() {
                   </thead>
 
                   <tbody>
-                    {giaoDich.map(
-                      (item) => {
-                        const isThu =
-                          item.loai ===
-                          "THU";
+                    {giaoDich.map((item) => {
+                      const isThu =
+                        item.loai === "THU";
 
-                        const chiHoiName =
-                          getChiHoiName(
-                            item.chiHoiId,
-                          );
+                      const chiHoiName =
+                        getChiHoiName(item.chiHoiId);
 
-                        return (
-                          <tr
-                            key={
-                              item._id
-                            }
-                            className="border-b border-slate-100 transition last:border-0 hover:bg-slate-50/70"
-                          >
-                            <td className="whitespace-nowrap px-5 py-4 text-slate-600">
-                              {formatDate(
-                                item.ngayGiaoDich,
-                              )}
-                            </td>
+                      return (
+                        <tr
+                          key={item._id}
+                          className="border-b border-slate-100 transition last:border-0 hover:bg-slate-50/70"
+                        >
+                          <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                            {formatDate(
+                              item.ngayGiaoDich,
+                            )}
+                          </td>
 
-                            <td className="px-5 py-4">
-                              <span
-                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                  isThu
-                                    ? "bg-green-50 text-green-700"
-                                    : "bg-red-50 text-red-700"
-                                }`}
-                              >
-                                {isThu
-                                  ? "Thu"
-                                  : "Chi"}
-                              </span>
-                            </td>
-
-                            <td className="px-5 py-4">
-                              <div className="max-w-[320px]">
-                                <p className="font-medium text-slate-800">
-                                  {
-                                    item.noiDung
-                                  }
-                                </p>
-
-                                {item.ghiChu && (
-                                  <p className="mt-1 truncate text-xs text-slate-400">
-                                    {
-                                      item.ghiChu
-                                    }
-                                  </p>
-                                )}
-                              </div>
-                            </td>
-
-                            <td className="whitespace-nowrap px-5 py-4 text-slate-600">
-                              {item.phamVi ===
-                              "CHI_HOI"
-                                ? chiHoiName ||
-                                  "Chi hội"
-                                : "Liên Chi hội"}
-                            </td>
-
-                            <td
-                              className={`whitespace-nowrap px-5 py-4 text-right font-semibold ${
+                          <td className="px-5 py-4">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                                 isThu
-                                  ? "text-green-600"
-                                  : "text-red-600"
+                                  ? "bg-green-50 text-green-700"
+                                  : "bg-red-50 text-red-700"
                               }`}
                             >
-                              {isThu
-                                ? "+"
-                                : "-"}
-                              {formatMoney(
-                                item.soTien,
-                              )}
-                            </td>
+                              {isThu ? "Thu" : "Chi"}
+                            </span>
+                          </td>
 
-                            <td className="whitespace-nowrap px-5 py-4 text-slate-600">
-                              {item.nguoiTaoTen ||
-                                "-"}
-                            </td>
-                          </tr>
-                        );
-                      },
-                    )}
+                          <td className="px-5 py-4">
+                            <div className="max-w-[320px]">
+                              <p className="font-medium text-slate-800">
+                                {item.noiDung}
+                              </p>
+
+                              {item.ghiChu && (
+                                <p className="mt-1 truncate text-xs text-slate-400">
+                                  {item.ghiChu}
+                                </p>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                            {item.phamVi === "CHI_HOI"
+                              ? chiHoiName || "Chi hội"
+                              : "Liên Chi hội"}
+                          </td>
+
+                          <td
+                            className={`whitespace-nowrap px-5 py-4 text-right font-semibold ${
+                              isThu
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {isThu ? "+" : "-"}
+                            {formatMoney(item.soTien)}
+                          </td>
+
+                          <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                            {item.nguoiTaoTen || "-"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -42,20 +42,15 @@ export type HanhDongXuLy =
   | "MO_LAI";
 
 export interface ITepDinhKemHoTro {
-  tenTep:
-    string;
+  tenTep: string;
 
-  duongDan:
-    string;
+  duongDan: string;
 
-  pathname?:
-    string;
+  pathname?: string;
 
-  mimeType?:
-    string;
+  mimeType?: string;
 
-  kichThuoc?:
-    number;
+  kichThuoc?: number;
 }
 
 export interface IPhanHoiHoTro {
@@ -70,6 +65,9 @@ export interface IPhanHoiHoTro {
 
   noiDung:
     string;
+
+  tepDinhKem:
+    ITepDinhKemHoTro[];
 
   createdAt:
     Date;
@@ -171,66 +169,38 @@ const TepDinhKemSchema =
   new Schema<ITepDinhKemHoTro>(
     {
       tenTep: {
-        type:
-          String,
-
-        required:
-          true,
-
-        trim:
-          true,
-
-        maxlength:
-          500,
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 500,
       },
 
       duongDan: {
-        type:
-          String,
-
-        required:
-          true,
-
-        trim:
-          true,
+        type: String,
+        required: true,
+        trim: true,
       },
 
       pathname: {
-        type:
-          String,
-
-        trim:
-          true,
-
-        default:
-          "",
+        type: String,
+        trim: true,
+        default: "",
       },
 
       mimeType: {
-        type:
-          String,
-
-        trim:
-          true,
-
-        default:
-          "",
+        type: String,
+        trim: true,
+        default: "",
       },
 
       kichThuoc: {
-        type:
-          Number,
-
-        min:
-          0,
-
-        default:
-          0,
+        type: Number,
+        min: 0,
+        default: 0,
       },
     },
     {
-      _id:
-        false,
+      _id: false,
     },
   );
 
@@ -282,14 +252,41 @@ const PhanHoiSchema =
         type:
           String,
 
-        required:
-          true,
-
         trim:
           true,
 
+        default:
+          "",
+
         maxlength:
           3000,
+      },
+
+      tepDinhKem: {
+        type: [
+          TepDinhKemSchema,
+        ],
+
+        default:
+          [],
+
+        validate: {
+          validator(
+            value:
+              ITepDinhKemHoTro[],
+          ) {
+            return (
+              Array.isArray(
+                value,
+              ) &&
+              value.length <=
+                5
+            );
+          },
+
+          message:
+            "Mỗi phản hồi chỉ được đính kèm tối đa 5 tệp",
+        },
       },
 
       createdAt: {

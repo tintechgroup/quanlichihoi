@@ -3,6 +3,7 @@ import {
 } from "next/server";
 
 import {
+  del,
   put,
 } from "@vercel/blob";
 
@@ -41,6 +42,23 @@ const ALLOWED_EXTENSIONS =
     "pdf",
   ]);
 
+function errorResponse(
+  message: string,
+  status = 400,
+) {
+  return NextResponse.json(
+    {
+      success:
+        false,
+
+      message,
+    },
+    {
+      status,
+    },
+  );
+}
+
 function getExtension(
   filename: string,
 ) {
@@ -69,30 +87,27 @@ function sanitizeFileName(
     .replace(
       /-+/g,
       "-",
-    );
+    )
+    .replace(
+      /^-+|-+$/g,
+      "");
 }
 
 export async function POST(
   request:
     Request,
 ) {
+  const uploadedPathnames:
+    string[] = [];
+
   try {
     const session =
       await getCurrentSession();
 
     if (!session) {
-      return NextResponse.json(
-        {
-          success:
-            false,
-
-          message:
-            "Bạn chưa đăng nhập",
-        },
-        {
-          status:
-            401,
-        },
+      return errorResponse(
+        "Bạn chưa đăng nhập",
+        401,
       );
     }
 
@@ -116,18 +131,8 @@ export async function POST(
       files.length ===
       0
     ) {
-      return NextResponse.json(
-        {
-          success:
-            false,
-
-          message:
-            "Vui lòng chọn ít nhất một tệp",
-        },
-        {
-          status:
-            400,
-        },
+      return errorResponse(
+        "Vui lòng chọn ít nhất một tệp",
       );
     }
 
@@ -135,18 +140,8 @@ export async function POST(
       files.length >
       MAX_FILES
     ) {
-      return NextResponse.json(
-        {
-          success:
-            false,
-
-          message:
-            `Chỉ được tải tối đa ${MAX_FILES} tệp`,
-        },
-        {
-          status:
-            400,
-        },
+      return errorResponse(
+        `Chỉ được tải tối đa ${MAX_FILES} tệp`,
       );
     }
 
@@ -154,6 +149,15 @@ export async function POST(
       const file of
       files
     ) {
+      if (
+        file.size <=
+        0
+      ) {
+        return errorResponse(
+          `Tệp "${file.name}" không có dữ liệu`,
+        );
+      }
+
       const extension =
         getExtension(
           file.name,
@@ -164,18 +168,8 @@ export async function POST(
           extension,
         )
       ) {
-        return NextResponse.json(
-          {
-            success:
-              false,
-
-            message:
-              `Tệp "${file.name}" không đúng định dạng cho phép`,
-          },
-          {
-            status:
-              400,
-          },
+        return errorResponse(
+          `Tệp "${file.name}" không đúng định dạng cho phép`,
         );
       }
 
@@ -185,18 +179,8 @@ export async function POST(
           file.type,
         )
       ) {
-        return NextResponse.json(
-          {
-            success:
-              false,
-
-            message:
-              `Loại tệp "${file.name}" không được hỗ trợ`,
-          },
-          {
-            status:
-              400,
-          },
+        return errorResponse(
+          `Loại tệp "${file.name}" không được hỗ trợ`,
         );
       }
 
@@ -204,38 +188,43 @@ export async function POST(
         file.size >
         MAX_FILE_SIZE
       ) {
-        return NextResponse.json(
-          {
-            success:
-              false,
-
-            message:
-              `Tệp "${file.name}" vượt quá 10MB`,
-          },
-          {
-            status:
-              400,
-          },
+        return errorResponse(
+          `Tệp "${file.name}" vượt quá 10MB`,
         );
       }
     }
 
     const uploaded: {
-      tenTep: string;
-      duongDan: string;
-      pathname: string;
-      mimeType: string;
-      kichThuoc: number;
+      tenTep:
+        string;
+
+      duongDan:
+        string;
+
+      pathname:
+        string;
+
+      mimeType:
+        string;
+
+      kichThuoc:
+        number;
     }[] = [];
 
     for (
       const file of
       files
     ) {
+      const extension =
+        getExtension(
+          file.name,
+        );
+
       const safeName =
         sanitizeFileName(
           file.name,
-        );
+        ) ||
+        `tep-ho-tro.${extension}`;
 
       const pathname =
         [
@@ -247,9 +236,6 @@ export async function POST(
           "/",
         );
 
-      /*
-       * Store của project là PRIVATE.
-       */
       const blob =
         await put(
           pathname,
@@ -267,15 +253,14 @@ export async function POST(
           },
         );
 
+      uploadedPathnames.push(
+        blob.pathname,
+      );
+
       uploaded.push({
         tenTep:
           file.name,
 
-        /*
-         * Vẫn lưu URL để có metadata,
-         * nhưng frontend KHÔNG truy cập
-         * URL private này trực tiếp.
-         */
         duongDan:
           blob.url,
 
@@ -283,7 +268,8 @@ export async function POST(
           blob.pathname,
 
         mimeType:
-          file.type,
+          file.type ||
+          "application/octet-stream",
 
         kichThuoc:
           file.size,
@@ -308,24 +294,34 @@ export async function POST(
       error,
     );
 
-    return NextResponse.json(
-      {
-        success:
-          false,
+    /*
+     * Nếu lỗi giữa quá trình upload nhiều file,
+     * dọn các Blob đã tải thành công trước đó.
+     */
+    if (
+      uploadedPathnames.length >
+      0
+    ) {
+      await Promise.allSettled(
+        uploadedPathnames.map(
+          (
+            pathname,
+          ) =>
+            del(
+              pathname,
+            ),
+        ),
+      );
+    }
 
-        message:
-          process.env.NODE_ENV ===
-          "development"
-            ? error instanceof
-              Error
-              ? error.message
-              : "Không thể tải tệp"
-            : "Không thể tải tệp",
-      },
-      {
-        status:
-          500,
-      },
+    return errorResponse(
+      process.env.NODE_ENV ===
+        "development" &&
+      error instanceof
+        Error
+        ? error.message
+        : "Không thể tải tệp",
+      500,
     );
   }
 }

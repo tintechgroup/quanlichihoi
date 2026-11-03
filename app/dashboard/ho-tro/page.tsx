@@ -1,36 +1,28 @@
 "use client";
 
 import {
-  
-  
-  ChevronRight,
   CircleDot,
   Clock3,
   ExternalLink,
-  File,
-  
   FileText,
   Filter,
-  
   Inbox,
   Loader2,
   MessageSquare,
   Paperclip,
-  
   RefreshCw,
-  RotateCcw,
   Search,
   Send,
   ShieldCheck,
   Trash2,
   Upload,
-  
   X,
 } from "lucide-react";
 
 import {
-  ChangeEvent,
-  FormEvent,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -107,6 +99,9 @@ type PhanHoi = {
 
   noiDung:
     string;
+
+  tepDinhKem?:
+    Attachment[];
 
   createdAt:
     string;
@@ -245,27 +240,20 @@ type ApiResult = {
 
 const EMPTY_SUMMARY:
   Summary = {
-  total:
-    0,
+    total: 0,
 
-  moi:
-    0,
+    moi: 0,
 
-  daTiepNhan:
-    0,
+    daTiepNhan: 0,
 
-  dangXuLy:
-    0,
+    dangXuLy: 0,
 
-  choBoSung:
-    0,
+    choBoSung: 0,
 
-  daXuLy:
-    0,
+    daXuLy: 0,
 
-  dong:
-    0,
-};
+    dong: 0,
+  };
 
 const MAX_FILES =
   5;
@@ -417,31 +405,20 @@ function getExtension(
   );
 }
 
-function isImageAttachment(
+function attachmentUrl(
   file:
     Attachment,
 ) {
   if (
-    file.mimeType?.startsWith(
-      "image/",
-    )
+    file.pathname
   ) {
-    return true;
+    return `/api/ho-tro/file?pathname=${encodeURIComponent(
+      file.pathname,
+    )}`;
   }
 
-  return [
-    "png",
-    "jpg",
-    "jpeg",
-    "webp",
-  ].includes(
-    getExtension(
-      file.tenTep,
-    ),
-  );
+  return file.duongDan;
 }
-
-
 
 function statusLabel(
   value:
@@ -551,12 +528,63 @@ function actionLabel(
   return map[value];
 }
 
+function validateFiles(
+  files:
+    File[],
+) {
+  if (
+    files.length >
+    MAX_FILES
+  ) {
+    return `Chỉ được chọn tối đa ${MAX_FILES} tệp`;
+  }
+
+  for (
+    const file of
+    files
+  ) {
+    const extension =
+      getExtension(
+        file.name,
+      );
+
+    if (
+      !ALLOWED_EXTENSIONS.has(
+        extension,
+      )
+    ) {
+      return `Tệp "${file.name}" không đúng định dạng cho phép`;
+    }
+
+    if (
+      file.size <=
+      0
+    ) {
+      return `Tệp "${file.name}" không có dữ liệu`;
+    }
+
+    if (
+      file.size >
+      MAX_FILE_SIZE
+    ) {
+      return `Tệp "${file.name}" vượt quá 10MB`;
+    }
+  }
+
+  return "";
+}
+
 /* =========================================================
    PAGE
 ========================================================= */
 
 export default function HoTroPage() {
-  const fileInputRef =
+  const createFileRef =
+    useRef<HTMLInputElement | null>(
+      null,
+    );
+
+  const replyFileRef =
     useRef<HTMLInputElement | null>(
       null,
     );
@@ -567,9 +595,7 @@ export default function HoTroPage() {
   ] =
     useState<
       Ticket[]
-    >(
-      [],
-    );
+    >([]);
 
   const [
     permissions,
@@ -649,7 +675,7 @@ export default function HoTroPage() {
     );
 
   /* =======================================================
-     SEARCH
+     FILTER
   ======================================================= */
 
   const [
@@ -693,7 +719,7 @@ export default function HoTroPage() {
     );
 
   /* =======================================================
-     CREATE FORM
+     CREATE
   ======================================================= */
 
   const [
@@ -732,9 +758,9 @@ export default function HoTroPage() {
     selectedFiles,
     setSelectedFiles,
   ] =
-    useState<File[]>(
-      [],
-    );
+    useState<
+      File[]
+    >([]);
 
   /* =======================================================
      REPLY
@@ -747,6 +773,14 @@ export default function HoTroPage() {
     useState(
       "",
     );
+
+  const [
+    replyFiles,
+    setReplyFiles,
+  ] =
+    useState<
+      File[]
+    >([]);
 
   /* =======================================================
      SELECTED
@@ -770,7 +804,7 @@ export default function HoTroPage() {
     );
 
   /* =======================================================
-     LOAD
+     LOAD DATA
   ======================================================= */
 
   const loadData =
@@ -820,14 +854,11 @@ export default function HoTroPage() {
             );
           }
 
-          const url =
-            query.toString()
-              ? `/api/ho-tro?${query.toString()}`
-              : "/api/ho-tro";
-
           const response =
             await fetch(
-              url,
+              query.toString()
+                ? `/api/ho-tro?${query.toString()}`
+                : "/api/ho-tro",
               {
                 cache:
                   "no-store",
@@ -878,21 +909,6 @@ export default function HoTroPage() {
                   false,
               },
           );
-
-          if (
-            selectedId &&
-            !nextItems.some(
-              (
-                item,
-              ) =>
-                item._id ===
-                selectedId,
-            )
-          ) {
-            setSelectedId(
-              null,
-            );
-          }
         } catch (
           error
         ) {
@@ -917,13 +933,18 @@ export default function HoTroPage() {
         filterPriority,
         filterStatus,
         filterType,
-        selectedId,
       ],
     );
 
+  /*
+   * Quan trọng:
+   * Không gọi loadData() trực tiếp trong effect body.
+   * React ESLint mới sẽ báo react-hooks/set-state-in-effect
+   * vì loadData có setLoading(true) trước await.
+   */
   useEffect(
     () => {
-      const timer =
+      const timeoutId =
         window.setTimeout(
           () => {
             void loadData();
@@ -931,10 +952,11 @@ export default function HoTroPage() {
           0,
         );
 
-      return () =>
+      return () => {
         window.clearTimeout(
-          timer,
+          timeoutId,
         );
+      };
     },
     [
       loadData,
@@ -942,141 +964,132 @@ export default function HoTroPage() {
   );
 
   /* =======================================================
-     FILE SELECT
+     FILE SELECTION
   ======================================================= */
 
-  function handleFileSelect(
-    event:
-      ChangeEvent<HTMLInputElement>,
+  function addFiles(
+    current:
+      File[],
+
+    incoming:
+      File[],
+
+    setter:
+      (
+        files:
+          File[],
+      ) => void,
   ) {
-    const files =
-      Array.from(
-        event.target.files ||
-          [],
-      );
-
-    if (
-      files.length ===
-      0
-    ) {
-      return;
-    }
-
-    const nextFiles = [
-      ...selectedFiles,
+    const merged = [
+      ...current,
     ];
 
     for (
       const file of
-      files
+      incoming
     ) {
-      if (
-        nextFiles.length >=
-        MAX_FILES
-      ) {
-        setIsError(
-          true,
-        );
-
-        setMessage(
-          `Chỉ được đính kèm tối đa ${MAX_FILES} tệp`,
-        );
-
-        break;
-      }
-
-      const extension =
-        getExtension(
-          file.name,
-        );
-
-      if (
-        !ALLOWED_EXTENSIONS.has(
-          extension,
-        )
-      ) {
-        setIsError(
-          true,
-        );
-
-        setMessage(
-          `Tệp "${file.name}" không đúng định dạng cho phép`,
-        );
-
-        continue;
-      }
-
-      if (
-        file.size >
-        MAX_FILE_SIZE
-      ) {
-        setIsError(
-          true,
-        );
-
-        setMessage(
-          `Tệp "${file.name}" vượt quá 10MB`,
-        );
-
-        continue;
-      }
-
       const duplicate =
-        nextFiles.some(
+        merged.some(
           (
-            current,
+            item,
           ) =>
-            current.name ===
+            item.name ===
               file.name &&
-            current.size ===
-              file.size,
+            item.size ===
+              file.size &&
+            item.lastModified ===
+              file.lastModified,
         );
 
-      if (!duplicate) {
-        nextFiles.push(
+      if (
+        !duplicate
+      ) {
+        merged.push(
           file,
         );
       }
     }
 
-    setSelectedFiles(
-      nextFiles,
-    );
+    const validationError =
+      validateFiles(
+        merged,
+      );
 
     if (
-      fileInputRef.current
+      validationError
     ) {
-      fileInputRef.current.value =
-        "";
+      setIsError(
+        true,
+      );
+
+      setMessage(
+        validationError,
+      );
+
+      return;
     }
+
+    setter(
+      merged,
+    );
+
+    setIsError(
+      false,
+    );
+
+    setMessage(
+      "",
+    );
   }
 
-  function removeSelectedFile(
-    index:
-      number,
+  function handleCreateFiles(
+    event:
+      ChangeEvent<HTMLInputElement>,
   ) {
-    setSelectedFiles(
-      (
-        previous,
-      ) =>
-        previous.filter(
-          (
-            _,
-            currentIndex,
-          ) =>
-            currentIndex !==
-            index,
-        ),
+    addFiles(
+      selectedFiles,
+
+      Array.from(
+        event.target.files ||
+          [],
+      ),
+
+      setSelectedFiles,
     );
+
+    event.target.value =
+      "";
+  }
+
+  function handleReplyFiles(
+    event:
+      ChangeEvent<HTMLInputElement>,
+  ) {
+    addFiles(
+      replyFiles,
+
+      Array.from(
+        event.target.files ||
+          [],
+      ),
+
+      setReplyFiles,
+    );
+
+    event.target.value =
+      "";
   }
 
   /* =======================================================
      UPLOAD
   ======================================================= */
 
-  async function uploadFiles() {
+  async function uploadFiles(
+    files:
+      File[],
+  ) {
     if (
-      selectedFiles.length ===
+      files.length ===
       0
     ) {
       return [] as
@@ -1088,14 +1101,14 @@ export default function HoTroPage() {
     );
 
     try {
-      const formData =
+      const data =
         new FormData();
 
       for (
         const file of
-        selectedFiles
+        files
       ) {
-        formData.append(
+        data.append(
           "files",
           file,
         );
@@ -1112,7 +1125,7 @@ export default function HoTroPage() {
               "include",
 
             body:
-              formData,
+              data,
           },
         );
 
@@ -1137,7 +1150,7 @@ export default function HoTroPage() {
         )
       ) {
         throw new Error(
-          "Dữ liệu file upload không hợp lệ",
+          "Dữ liệu tệp tải lên không hợp lệ",
         );
       }
 
@@ -1151,7 +1164,7 @@ export default function HoTroPage() {
   }
 
   /* =======================================================
-     CREATE
+     CREATE TICKET
   ======================================================= */
 
   async function createTicket(
@@ -1159,14 +1172,6 @@ export default function HoTroPage() {
       FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
-
-    setMessage(
-      "",
-    );
-
-    setIsError(
-      false,
-    );
 
     if (
       !tieuDe.trim()
@@ -1176,7 +1181,7 @@ export default function HoTroPage() {
       );
 
       setMessage(
-        "Tiêu đề không được để trống",
+        "Vui lòng nhập tiêu đề yêu cầu",
       );
 
       return;
@@ -1190,7 +1195,7 @@ export default function HoTroPage() {
       );
 
       setMessage(
-        "Nội dung hỗ trợ không được để trống",
+        "Vui lòng nhập nội dung yêu cầu",
       );
 
       return;
@@ -1201,8 +1206,18 @@ export default function HoTroPage() {
         true,
       );
 
-      const uploadedFiles =
-        await uploadFiles();
+      setMessage(
+        "",
+      );
+
+      setIsError(
+        false,
+      );
+
+      const attachments =
+        await uploadFiles(
+          selectedFiles,
+        );
 
       const response =
         await fetch(
@@ -1232,7 +1247,7 @@ export default function HoTroPage() {
                 mucDo,
 
                 tepDinhKem:
-                  uploadedFiles,
+                  attachments,
               }),
           },
         );
@@ -1252,11 +1267,6 @@ export default function HoTroPage() {
         );
       }
 
-      setMessage(
-        result.message ||
-          "Gửi yêu cầu thành công",
-      );
-
       setTieuDe(
         "",
       );
@@ -1275,6 +1285,15 @@ export default function HoTroPage() {
 
       setSelectedFiles(
         [],
+      );
+
+      setIsError(
+        false,
+      );
+
+      setMessage(
+        result.message ||
+          "Gửi yêu cầu thành công",
       );
 
       await loadData();
@@ -1299,14 +1318,32 @@ export default function HoTroPage() {
   }
 
   /* =======================================================
-     REPLY
+     SEND REPLY
   ======================================================= */
 
-  async function sendReply() {
+  async function sendReply(
+    complete =
+      false,
+  ) {
     if (
-      !selectedTicket ||
-      !replyText.trim()
+      !selectedTicket
     ) {
+      return;
+    }
+
+    if (
+      !replyText.trim() &&
+      replyFiles.length ===
+        0
+    ) {
+      setIsError(
+        true,
+      );
+
+      setMessage(
+        "Vui lòng nhập nội dung hoặc chọn tệp đính kèm",
+      );
+
       return;
     }
 
@@ -1315,13 +1352,18 @@ export default function HoTroPage() {
         selectedTicket._id,
       );
 
+      setMessage(
+        "",
+      );
+
       setIsError(
         false,
       );
 
-      setMessage(
-        "",
-      );
+      const attachments =
+        await uploadFiles(
+          replyFiles,
+        );
 
       const response =
         await fetch(
@@ -1345,6 +1387,12 @@ export default function HoTroPage() {
 
                 noiDung:
                   replyText.trim(),
+
+                tepDinhKem:
+                  attachments,
+
+                danhDauDaXuLy:
+                  complete,
               }),
           },
         );
@@ -1366,6 +1414,14 @@ export default function HoTroPage() {
 
       setReplyText(
         "",
+      );
+
+      setReplyFiles(
+        [],
+      );
+
+      setIsError(
+        false,
       );
 
       setMessage(
@@ -1395,7 +1451,7 @@ export default function HoTroPage() {
   }
 
   /* =======================================================
-     STATUS
+     UPDATE STATUS
   ======================================================= */
 
   async function updateStatus(
@@ -1408,6 +1464,14 @@ export default function HoTroPage() {
     try {
       setProcessingId(
         ticketId,
+      );
+
+      setMessage(
+        "",
+      );
+
+      setIsError(
+        false,
       );
 
       const response =
@@ -1481,61 +1545,57 @@ export default function HoTroPage() {
   }
 
   /* =======================================================
-     FILTER
-  ======================================================= */
-
-  function applyFilters() {
-    setAppliedSearch(
-      search.trim(),
-    );
-  }
-
-  function resetFilters() {
-    setSearch(
-      "",
-    );
-
-    setAppliedSearch(
-      "",
-    );
-
-    setFilterStatus(
-      "",
-    );
-
-    setFilterType(
-      "",
-    );
-
-    setFilterPriority(
-      "",
-    );
-  }
-
-  /* =======================================================
-     UI
+     RENDER
   ======================================================= */
 
   return (
     <main className="min-h-full bg-[#f4f7fb] px-3 py-5 sm:px-5 lg:px-8 lg:py-8">
       <div className="mx-auto max-w-[1650px]">
-        <div className="mb-6">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#123b68]">
-            Hỗ trợ hệ thống
-          </p>
+        {/* HEADER */}
 
-          <h1 className="mt-2 text-2xl font-bold text-slate-950 sm:text-3xl">
-            Hỗ trợ và phản hồi
-          </h1>
+        <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#123b68]">
+              Hỗ trợ hệ thống
+            </p>
 
-          <p className="mt-2 text-sm text-slate-500">
-            Gửi yêu cầu, đính kèm ảnh lỗi/tài liệu và theo dõi quá trình xử lý.
-          </p>
+            <h1 className="mt-2 text-2xl font-bold text-slate-950 sm:text-3xl">
+              Hỗ trợ và phản hồi
+            </h1>
+
+            <p className="mt-2 text-sm text-slate-500">
+              Gửi yêu cầu, đính kèm ảnh lỗi và theo dõi toàn bộ quá trình xử lý.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              void loadData()
+            }
+            disabled={
+              loading
+            }
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border bg-white px-4 text-sm font-semibold disabled:opacity-50"
+          >
+            <RefreshCw
+              size={17}
+              className={
+                loading
+                  ? "animate-spin"
+                  : ""
+              }
+            />
+
+            Làm mới
+          </button>
         </div>
+
+        {/* MESSAGE */}
 
         {message && (
           <div
-            className={`mb-5 flex items-start justify-between rounded-xl border p-4 text-sm ${
+            className={`mb-5 flex items-center justify-between gap-4 rounded-xl border p-4 text-sm ${
               isError
                 ? "border-red-200 bg-red-50 text-red-700"
                 : "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -1552,6 +1612,7 @@ export default function HoTroPage() {
                   "",
                 )
               }
+              className="shrink-0"
             >
               <X
                 size={16}
@@ -1560,9 +1621,11 @@ export default function HoTroPage() {
           </div>
         )}
 
-        <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        {/* SUMMARY */}
+
+        <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <SummaryCard
-            label="Tổng yêu cầu"
+            label="Tổng"
             value={
               summary.total
             }
@@ -1603,7 +1666,183 @@ export default function HoTroPage() {
               summary.dong
             }
           />
+        </div>
+
+        {/* FILTER */}
+
+        <section className="mb-5 rounded-2xl border bg-white p-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_190px_190px_190px_auto]">
+            <div className="relative">
+              <Search
+                size={17}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
+              <input
+                value={
+                  search
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setSearch(
+                    event.target.value,
+                  )
+                }
+                onKeyDown={(
+                  event,
+                ) => {
+                  if (
+                    event.key ===
+                    "Enter"
+                  ) {
+                    setAppliedSearch(
+                      search.trim(),
+                    );
+                  }
+                }}
+                className="h-11 w-full rounded-xl border pl-10 pr-3 text-sm outline-none focus:border-[#123b68]"
+                placeholder="Tìm mã, tiêu đề..."
+              />
+            </div>
+
+            <select
+              value={
+                filterStatus
+              }
+              onChange={(
+                event,
+              ) =>
+                setFilterStatus(
+                  event.target.value,
+                )
+              }
+              className="h-11 rounded-xl border px-3 text-sm"
+            >
+              <option value="">
+                Tất cả trạng thái
+              </option>
+
+              <option value="MOI">
+                Mới
+              </option>
+
+              <option value="DA_TIEP_NHAN">
+                Đã tiếp nhận
+              </option>
+
+              <option value="DANG_XU_LY">
+                Đang xử lý
+              </option>
+
+              <option value="CHO_BO_SUNG">
+                Chờ bổ sung
+              </option>
+
+              <option value="DA_XU_LY">
+                Đã xử lý
+              </option>
+
+              <option value="DONG">
+                Đã đóng
+              </option>
+            </select>
+
+            <select
+              value={
+                filterType
+              }
+              onChange={(
+                event,
+              ) =>
+                setFilterType(
+                  event.target.value,
+                )
+              }
+              className="h-11 rounded-xl border px-3 text-sm"
+            >
+              <option value="">
+                Tất cả nhóm
+              </option>
+
+              <option value="TAI_KHOAN">
+                Tài khoản
+              </option>
+
+              <option value="HOI_VIEN">
+                Hội viên
+              </option>
+
+              <option value="HOAT_DONG">
+                Hoạt động
+              </option>
+
+              <option value="HOI_PHI">
+                Hội phí
+              </option>
+
+              <option value="TAI_CHINH">
+                Tài chính
+              </option>
+
+              <option value="VAN_KIEN">
+                Văn kiện
+              </option>
+
+              <option value="KHAC">
+                Khác
+              </option>
+            </select>
+
+            <select
+              value={
+                filterPriority
+              }
+              onChange={(
+                event,
+              ) =>
+                setFilterPriority(
+                  event.target.value,
+                )
+              }
+              className="h-11 rounded-xl border px-3 text-sm"
+            >
+              <option value="">
+                Tất cả mức độ
+              </option>
+
+              <option value="THAP">
+                Thấp
+              </option>
+
+              <option value="TRUNG_BINH">
+                Trung bình
+              </option>
+
+              <option value="CAO">
+                Cao
+              </option>
+            </select>
+
+            <button
+              type="button"
+              onClick={() =>
+                setAppliedSearch(
+                  search.trim(),
+                )
+              }
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#123b68] px-4 text-sm font-semibold text-white"
+            >
+              <Filter
+                size={16}
+              />
+
+              Lọc
+            </button>
+          </div>
         </section>
+
+        {/* CONTENT */}
 
         <section className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">
           {/* CREATE */}
@@ -1612,16 +1851,18 @@ export default function HoTroPage() {
             onSubmit={
               createTicket
             }
-            className="h-fit rounded-2xl border border-slate-200 bg-white shadow-sm"
+            className="h-fit rounded-2xl border bg-white shadow-sm"
           >
-            <div className="border-b border-slate-200 p-5">
+            <div className="border-b p-5">
               <h2 className="font-bold">
                 Gửi yêu cầu hỗ trợ
               </h2>
             </div>
 
             <div className="space-y-4 p-5">
-              <Field label="Tiêu đề">
+              <Field
+                label="Tiêu đề"
+              >
                 <input
                   value={
                     tieuDe
@@ -1636,12 +1877,14 @@ export default function HoTroPage() {
                   maxLength={
                     255
                   }
-                  className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
-                  placeholder="VD: Không đăng ký được hoạt động"
+                  className="h-11 w-full rounded-lg border px-3 text-sm outline-none focus:border-[#123b68]"
+                  placeholder="Nhập tiêu đề yêu cầu"
                 />
               </Field>
 
-              <Field label="Nhóm hỗ trợ">
+              <Field
+                label="Nhóm hỗ trợ"
+              >
                 <select
                   value={
                     loai
@@ -1654,33 +1897,41 @@ export default function HoTroPage() {
                         LoaiHoTro,
                     )
                   }
-                  className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                  className="h-11 w-full rounded-lg border bg-white px-3 text-sm"
                 >
                   <option value="TAI_KHOAN">
                     Tài khoản
                   </option>
+
                   <option value="HOI_VIEN">
                     Hội viên
                   </option>
+
                   <option value="HOAT_DONG">
                     Hoạt động
                   </option>
+
                   <option value="HOI_PHI">
                     Hội phí
                   </option>
+
                   <option value="TAI_CHINH">
                     Tài chính
                   </option>
+
                   <option value="VAN_KIEN">
                     Văn kiện
                   </option>
+
                   <option value="KHAC">
                     Khác
                   </option>
                 </select>
               </Field>
 
-              <Field label="Mức độ">
+              <Field
+                label="Mức độ"
+              >
                 <select
                   value={
                     mucDo
@@ -1693,21 +1944,25 @@ export default function HoTroPage() {
                         MucDo,
                     )
                   }
-                  className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                  className="h-11 w-full rounded-lg border bg-white px-3 text-sm"
                 >
                   <option value="THAP">
                     Thấp
                   </option>
+
                   <option value="TRUNG_BINH">
                     Trung bình
                   </option>
+
                   <option value="CAO">
                     Cao
                   </option>
                 </select>
               </Field>
 
-              <Field label="Nội dung">
+              <Field
+                label="Nội dung"
+              >
                 <textarea
                   rows={
                     6
@@ -1725,96 +1980,66 @@ export default function HoTroPage() {
                   maxLength={
                     5000
                   }
-                  className="w-full resize-none rounded-lg border border-slate-300 p-3 text-sm"
-                  placeholder="Mô tả chi tiết vấn đề..."
+                  className="w-full resize-none rounded-lg border p-3 text-sm outline-none focus:border-[#123b68]"
+                  placeholder="Mô tả chi tiết vấn đề cần hỗ trợ..."
                 />
-
-                <p className="mt-1 text-right text-xs text-slate-400">
-                  {noiDung.length}/5000
-                </p>
               </Field>
 
-              {/* ATTACHMENT */}
+              <input
+                ref={
+                  createFileRef
+                }
+                type="file"
+                multiple
+                accept=".png,.jpg,.jpeg,.webp,.pdf"
+                onChange={
+                  handleCreateFiles
+                }
+                className="hidden"
+              />
 
-              <Field label="Ảnh lỗi / tài liệu">
-                <input
-                  ref={
-                    fileInputRef
-                  }
-                  type="file"
-                  multiple
-                  accept=".png,.jpg,.jpeg,.webp,.pdf"
-                  onChange={
-                    handleFileSelect
-                  }
-                  className="hidden"
+              <button
+                type="button"
+                onClick={() =>
+                  createFileRef
+                    .current
+                    ?.click()
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed p-4 text-sm text-slate-600 hover:border-[#123b68] hover:text-[#123b68]"
+              >
+                <Upload
+                  size={17}
                 />
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    fileInputRef.current?.click()
-                  }
-                  disabled={
-                    selectedFiles.length >=
-                    MAX_FILES
-                  }
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-600 hover:border-[#123b68] disabled:opacity-50"
-                >
-                  <Upload
-                    size={18}
-                  />
+                Chọn ảnh / PDF
+              </button>
 
-                  Chọn ảnh hoặc PDF
-                </button>
+              <p className="text-xs leading-5 text-slate-400">
+                PNG, JPG, JPEG, WEBP hoặc PDF. Tối đa 5 tệp, mỗi tệp không quá 10MB.
+              </p>
 
-                <p className="mt-2 text-xs text-slate-400">
-                  PNG, JPG, WEBP, PDF · tối đa 10MB/tệp · tối đa 5 tệp
-                </p>
-
-                {selectedFiles.length >
-                  0 && (
-                  <div className="mt-3 space-y-2">
-                    {selectedFiles.map(
-                      (
-                        file,
-                        index,
-                      ) => (
-                        <div
-                          key={`${file.name}-${index}`}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-xs font-semibold text-slate-700">
-                              {file.name}
-                            </p>
-
-                            <p className="mt-0.5 text-[11px] text-slate-400">
-                              {formatFileSize(
-                                file.size,
-                              )}
-                            </p>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              removeSelectedFile(
-                                index,
-                              )
-                            }
-                            className="text-red-500"
-                          >
-                            <Trash2
-                              size={15}
-                            />
-                          </button>
-                        </div>
+              <FileSelection
+                files={
+                  selectedFiles
+                }
+                onRemove={(
+                  index,
+                ) =>
+                  setSelectedFiles(
+                    (
+                      current,
+                    ) =>
+                      current.filter(
+                        (
+                          _,
+                          currentIndex,
+                        ) =>
+                          currentIndex !==
+                          index,
                       ),
-                    )}
-                  </div>
-                )}
-              </Field>
+                  )
+                }
+              />
 
               <button
                 type="submit"
@@ -1822,298 +2047,135 @@ export default function HoTroPage() {
                   saving ||
                   uploading
                 }
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#123b68] text-sm font-semibold text-white disabled:opacity-50"
+                className="h-11 w-full rounded-xl bg-[#123b68] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving ||
-                uploading ? (
-                  <Loader2
-                    size={17}
-                    className="animate-spin"
-                  />
-                ) : (
-                  <Send
-                    size={17}
-                  />
-                )}
-
-                {uploading
-                  ? "Đang tải tệp..."
-                  : saving
-                    ? "Đang gửi..."
-                    : "Gửi yêu cầu"}
+                uploading
+                  ? "Đang gửi..."
+                  : "Gửi yêu cầu"}
               </button>
             </div>
           </form>
 
           {/* LIST */}
 
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-bold">
-                    Danh sách yêu cầu
-                  </h2>
-
-                  <p className="mt-1 text-xs text-slate-400">
-                    {items.length} yêu cầu đang hiển thị
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    void loadData()
-                  }
-                  className="inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm"
-                >
-                  <RefreshCw
-                    size={15}
-                  />
-
-                  Làm mới
-                </button>
-              </div>
-
-              <div className="mt-4 grid gap-2 lg:grid-cols-[1.5fr_170px_150px_140px_auto]">
-                <div className="relative">
-                  <Search
-                    size={16}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-
-                  <input
-                    value={
-                      search
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setSearch(
-                        event.target.value,
-                      )
-                    }
-                    className="h-10 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm"
-                    placeholder="Tìm mã, tiêu đề, người gửi..."
-                  />
-                </div>
-
-                <select
-                  value={
-                    filterStatus
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setFilterStatus(
-                      event.target.value,
-                    )
-                  }
-                  className="h-10 rounded-lg border bg-white px-3 text-sm"
-                >
-                  <option value="">
-                    Tất cả trạng thái
-                  </option>
-                  <option value="MOI">
-                    Mới
-                  </option>
-                  <option value="DA_TIEP_NHAN">
-                    Đã tiếp nhận
-                  </option>
-                  <option value="DANG_XU_LY">
-                    Đang xử lý
-                  </option>
-                  <option value="CHO_BO_SUNG">
-                    Chờ bổ sung
-                  </option>
-                  <option value="DA_XU_LY">
-                    Đã xử lý
-                  </option>
-                  <option value="DONG">
-                    Đã đóng
-                  </option>
-                </select>
-
-                <select
-                  value={
-                    filterType
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setFilterType(
-                      event.target.value,
-                    )
-                  }
-                  className="h-10 rounded-lg border bg-white px-3 text-sm"
-                >
-                  <option value="">
-                    Mọi nhóm
-                  </option>
-                  <option value="TAI_KHOAN">
-                    Tài khoản
-                  </option>
-                  <option value="HOI_VIEN">
-                    Hội viên
-                  </option>
-                  <option value="HOAT_DONG">
-                    Hoạt động
-                  </option>
-                  <option value="TAI_CHINH">
-                    Tài chính
-                  </option>
-                  <option value="KHAC">
-                    Khác
-                  </option>
-                </select>
-
-                <select
-                  value={
-                    filterPriority
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setFilterPriority(
-                      event.target.value,
-                    )
-                  }
-                  className="h-10 rounded-lg border bg-white px-3 text-sm"
-                >
-                  <option value="">
-                    Mọi mức độ
-                  </option>
-                  <option value="CAO">
-                    Cao
-                  </option>
-                  <option value="TRUNG_BINH">
-                    Trung bình
-                  </option>
-                  <option value="THAP">
-                    Thấp
-                  </option>
-                </select>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={
-                      applyFilters
-                    }
-                    className="inline-flex h-10 items-center gap-1 rounded-lg bg-[#123b68] px-3 text-sm text-white"
-                  >
-                    <Filter
-                      size={14}
-                    />
-
-                    Lọc
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={
-                      resetFilters
-                    }
-                    className="h-10 rounded-lg border px-3"
-                  >
-                    <RotateCcw
-                      size={14}
-                    />
-                  </button>
-                </div>
-              </div>
-            </div>
-
+          <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
             {loading ? (
-              <div className="flex min-h-[350px] items-center justify-center">
+              <div className="flex min-h-[420px] items-center justify-center">
                 <Loader2
-                  className="animate-spin"
+                  size={28}
+                  className="animate-spin text-[#123b68]"
                 />
               </div>
             ) : items.length ===
               0 ? (
-              <div className="flex min-h-[350px] flex-col items-center justify-center">
+              <div className="flex min-h-[420px] flex-col items-center justify-center text-slate-400">
                 <Inbox
                   size={42}
-                  className="text-slate-300"
                 />
 
-                <p className="mt-3 text-sm text-slate-500">
-                  Không có yêu cầu phù hợp.
+                <p className="mt-3">
+                  Chưa có yêu cầu hỗ trợ
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y">
                 {items.map(
                   (
-                    item,
+                    ticket,
                   ) => (
                     <button
                       key={
-                        item._id
+                        ticket._id
                       }
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
                         setSelectedId(
-                          item._id,
-                        )
-                      }
-                      className="block w-full p-5 text-left hover:bg-slate-50"
+                          ticket._id,
+                        );
+
+                        setReplyText(
+                          "",
+                        );
+
+                        setReplyFiles(
+                          [],
+                        );
+                      }}
+                      className="block w-full p-5 text-left transition hover:bg-slate-50"
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-bold text-[#123b68]">
-                              {item.maYeuCau}
-                            </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold text-[#123b68]">
+                          {ticket.maYeuCau}
+                        </span>
 
-                            <PriorityBadge
-                              value={
-                                item.mucDo
+                        <StatusBadge
+                          status={
+                            ticket.trangThai
+                          }
+                        />
+
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs">
+                          {priorityLabel(
+                            ticket.mucDo,
+                          )}
+                        </span>
+                      </div>
+
+                      <h3 className="mt-2 font-bold text-slate-900">
+                        {ticket.tieuDe}
+                      </h3>
+
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-500">
+                        {ticket.noiDung}
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                        <span>
+                          {ticket.nguoiGuiTen}
+                        </span>
+
+                        <span>
+                          {formatDateTime(
+                            ticket.createdAt,
+                          )}
+                        </span>
+
+                        {ticket.tepDinhKem &&
+                          ticket
+                            .tepDinhKem
+                            .length >
+                            0 && (
+                            <span className="inline-flex items-center gap-1">
+                              <Paperclip
+                                size={12}
+                              />
+
+                              {
+                                ticket
+                                  .tepDinhKem
+                                  .length
                               }
-                            />
+                            </span>
+                          )}
 
-                            {item.tepDinhKem &&
-                              item.tepDinhKem.length >
-                                0 && (
-                                <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-                                  <Paperclip
-                                    size={12}
-                                  />
+                        {ticket.phanHoi &&
+                          ticket
+                            .phanHoi
+                            .length >
+                            0 && (
+                            <span className="inline-flex items-center gap-1">
+                              <MessageSquare
+                                size={12}
+                              />
 
-                                  {
-                                    item
-                                      .tepDinhKem
-                                      .length
-                                  }
-                                </span>
-                              )}
-                          </div>
-
-                          <p className="mt-2 font-semibold">
-                            {item.tieuDe}
-                          </p>
-
-                          <p className="mt-2 text-xs text-slate-500">
-                            {item.nguoiGuiTen}
-                            {" · "}
-                            {formatDateTime(
-                              item.createdAt,
-                            )}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <StatusBadge
-                            status={
-                              item.trangThai
-                            }
-                          />
-
-                          <ChevronRight
-                            size={17}
-                          />
-                        </div>
+                              {
+                                ticket
+                                  .phanHoi
+                                  .length
+                              }
+                            </span>
+                          )}
                       </div>
                     </button>
                   ),
@@ -2122,141 +2184,130 @@ export default function HoTroPage() {
             )}
           </div>
         </section>
+      </div>
 
-        {/* DETAIL */}
+      {/* DETAIL DRAWER */}
 
-        {selectedTicket && (
-          <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b p-5">
-              <div className="flex justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="text-xs font-bold text-[#123b68]">
-                      {selectedTicket.maYeuCau}
-                    </span>
+      {selectedTicket && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/50">
+          <button
+            type="button"
+            aria-label="Đóng"
+            className="absolute inset-0 cursor-default"
+            onClick={() =>
+              setSelectedId(
+                null,
+              )
+            }
+          />
 
-                    <PriorityBadge
-                      value={
-                        selectedTicket.mucDo
-                      }
-                    />
+          <div className="relative z-10 h-full w-full max-w-3xl overflow-y-auto bg-white shadow-2xl">
+            {/* HEADER */}
 
-                    <StatusBadge
-                      status={
-                        selectedTicket.trangThai
-                      }
-                    />
-                  </div>
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b bg-white p-5">
+              <div className="min-w-0 pr-4">
+                <p className="text-xs font-bold text-[#123b68]">
+                  {selectedTicket.maYeuCau}
+                </p>
 
-                  <h2 className="mt-3 text-xl font-bold">
-                    {selectedTicket.tieuDe}
-                  </h2>
+                <h2 className="mt-1 break-words text-xl font-bold">
+                  {selectedTicket.tieuDe}
+                </h2>
 
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                    {selectedTicket.noiDung}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedId(
-                      null,
-                    )
-                  }
-                >
-                  <X
-                    size={18}
-                  />
-                </button>
+                <p className="mt-1 text-xs text-slate-400">
+                  {selectedTicket.nguoiGuiTen}
+                  {" · "}
+                  {formatDateTime(
+                    selectedTicket.createdAt,
+                  )}
+                </p>
               </div>
 
-              {/* ATTACHMENTS */}
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedId(
+                    null,
+                  )
+                }
+                className="shrink-0 rounded-lg p-2 hover:bg-slate-100"
+              >
+                <X />
+              </button>
+            </div>
 
-              {selectedTicket
-                .tepDinhKem &&
-                selectedTicket
-                  .tepDinhKem
-                  .length >
-                  0 && (
-                  <div className="mt-5">
-                    <div className="mb-3 flex items-center gap-2">
-                      <Paperclip
-                        size={16}
-                      />
+            <div className="space-y-6 p-5">
+              {/* BADGES */}
 
-                      <h3 className="text-sm font-bold">
-                        Tệp đính kèm
-                      </h3>
-                    </div>
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge
+                  status={
+                    selectedTicket.trangThai
+                  }
+                />
 
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {selectedTicket.tepDinhKem.map(
-                        (
-                          file,
-                          index,
-                        ) => (
-                          <a
-                            key={`${file.duongDan}-${index}`}
-                            href={
-                              file.duongDan
-                            }
-                            target="_blank"
-                            rel="noreferrer"
-                            className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 hover:border-[#123b68]"
-                          >
-                            {isImageAttachment(
-                              file,
-                            ) ? (
-                              <div className="aspect-video overflow-hidden bg-slate-100">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={
-                                    file.duongDan
-                                  }
-                                  alt={
-                                    file.tenTep
-                                  }
-                                  className="h-full w-full object-cover transition group-hover:scale-[1.02]"
-                                />
-                              </div>
-                            ) : (
-                              <div className="flex aspect-video items-center justify-center bg-red-50 text-red-600">
-                                <FileText
-                                  size={36}
-                                />
-                              </div>
-                            )}
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">
+                  {priorityLabel(
+                    selectedTicket.mucDo,
+                  )}
+                </span>
+              </div>
 
-                            <div className="p-3">
-                              <p className="truncate text-xs font-semibold text-slate-700">
-                                {file.tenTep}
-                              </p>
+              {/* CONTENT */}
 
-                              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
-                                <span>
-                                  {formatFileSize(
-                                    file.kichThuoc,
-                                  )}
-                                </span>
+              <div>
+                <h3 className="font-bold">
+                  Nội dung yêu cầu
+                </h3>
 
-                                <ExternalLink
-                                  size={12}
-                                />
-                              </div>
-                            </div>
-                          </a>
-                        ),
-                      )}
-                    </div>
-                  </div>
-                )}
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  {selectedTicket.noiDung}
+                </p>
+              </div>
+
+              {/* ORIGINAL FILES */}
+
+              {(selectedTicket
+                .tepDinhKem ||
+                []).length >
+                0 && (
+                <div>
+                  <h3 className="font-bold">
+                    Tệp đính kèm
+                  </h3>
+
+                  <AttachmentGrid
+                    files={
+                      selectedTicket.tepDinhKem ||
+                      []
+                    }
+                  />
+                </div>
+              )}
+
+              {/* MANAGER */}
 
               {permissions.canManage && (
-                <div className="mt-5">
+                <div className="rounded-xl border bg-slate-50 p-4">
+                  <div className="flex items-center gap-2 font-bold">
+                    <ShieldCheck
+                      size={17}
+                    />
+
+                    Xử lý yêu cầu
+                  </div>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    Cập nhật trạng thái xử lý hiện tại.
+                  </p>
+
                   <select
                     value={
                       selectedTicket.trangThai
+                    }
+                    disabled={
+                      processingId ===
+                      selectedTicket._id
                     }
                     onChange={(
                       event,
@@ -2268,90 +2319,124 @@ export default function HoTroPage() {
                           TrangThai,
                       )
                     }
-                    disabled={
-                      processingId ===
-                      selectedTicket._id
-                    }
-                    className="h-11 rounded-lg border bg-white px-3 text-sm"
+                    className="mt-3 h-11 w-full rounded-lg border bg-white px-3 text-sm"
                   >
                     <option value="MOI">
                       Mới
                     </option>
+
                     <option value="DA_TIEP_NHAN">
                       Đã tiếp nhận
                     </option>
+
                     <option value="DANG_XU_LY">
                       Đang xử lý
                     </option>
+
                     <option value="CHO_BO_SUNG">
                       Chờ bổ sung
                     </option>
+
                     <option value="DA_XU_LY">
                       Đã xử lý
                     </option>
+
                     <option value="DONG">
-                      Đã đóng
+                      Đóng
                     </option>
                   </select>
+
+                  {selectedTicket.nguoiXuLyTen && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Người xử lý:{" "}
+                      <span className="font-semibold">
+                        {selectedTicket.nguoiXuLyTen}
+                      </span>
+                    </p>
+                  )}
                 </div>
               )}
-            </div>
 
-            <div className="grid xl:grid-cols-2">
-              {/* CHAT */}
+              {/* CONVERSATION */}
 
-              <div className="border-b p-5 xl:border-b-0 xl:border-r">
+              <div>
                 <h3 className="flex items-center gap-2 font-bold">
                   <MessageSquare
                     size={17}
                   />
+
                   Trao đổi
                 </h3>
 
-                <div className="mt-4 space-y-3">
-                  {selectedTicket.phanHoi.map(
-                    (
-                      reply,
-                      index,
-                    ) => (
-                      <div
-                        key={
-                          reply._id ||
-                          index
-                        }
-                        className="rounded-xl border bg-slate-50 p-4"
-                      >
-                        <div className="flex justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold">
-                              {reply.nguoiGuiTen}
-                            </p>
+                {(selectedTicket
+                  .phanHoi ||
+                  []).length ===
+                  0 ? (
+                  <div className="mt-4 rounded-xl border border-dashed p-5 text-center text-sm text-slate-400">
+                    Chưa có phản hồi.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {(
+                      selectedTicket
+                        .phanHoi ||
+                      []
+                    ).map(
+                      (
+                        reply,
+                        index,
+                      ) => (
+                        <div
+                          key={
+                            reply._id ||
+                            `${reply.createdAt}-${index}`
+                          }
+                          className="rounded-xl border bg-slate-50 p-4"
+                        >
+                          <div className="flex justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold">
+                                {reply.nguoiGuiTen}
+                              </p>
 
-                            <p className="text-xs text-slate-400">
-                              {roleLabel(
-                                reply.vaiTro,
+                              <p className="text-xs text-slate-400">
+                                {roleLabel(
+                                  reply.vaiTro,
+                                )}
+                              </p>
+                            </div>
+
+                            <span className="shrink-0 text-xs text-slate-400">
+                              {formatDateTime(
+                                reply.createdAt,
                               )}
-                            </p>
+                            </span>
                           </div>
 
-                          <span className="text-xs text-slate-400">
-                            {formatDateTime(
-                              reply.createdAt,
-                            )}
-                          </span>
-                        </div>
+                          {reply.noiDung && (
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                              {reply.noiDung}
+                            </p>
+                          )}
 
-                        <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">
-                          {reply.noiDung}
-                        </p>
-                      </div>
-                    ),
-                  )}
-                </div>
+                          <AttachmentGrid
+                            files={
+                              reply.tepDinhKem ||
+                              []
+                            }
+                            compact
+                          />
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
+
+                {/* REPLY FORM */}
 
                 {selectedTicket.trangThai !==
                   "DONG" && (
-                  <div className="mt-5">
+                  <div className="mt-5 rounded-xl border p-4">
                     <textarea
                       rows={
                         4
@@ -2366,121 +2451,228 @@ export default function HoTroPage() {
                           event.target.value,
                         )
                       }
-                      className="w-full resize-none rounded-lg border p-3 text-sm"
+                      maxLength={
+                        3000
+                      }
+                      className="w-full resize-none rounded-lg border p-3 text-sm outline-none focus:border-[#123b68]"
                       placeholder="Nhập nội dung phản hồi..."
+                    />
+
+                    <input
+                      ref={
+                        replyFileRef
+                      }
+                      type="file"
+                      multiple
+                      accept=".png,.jpg,.jpeg,.webp,.pdf"
+                      onChange={
+                        handleReplyFiles
+                      }
+                      className="hidden"
                     />
 
                     <button
                       type="button"
                       onClick={() =>
-                        void sendReply()
+                        replyFileRef
+                          .current
+                          ?.click()
                       }
-                      disabled={
-                        !replyText.trim() ||
-                        processingId ===
-                          selectedTicket._id
-                      }
-                      className="mt-2 inline-flex h-10 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-50"
+                      className="mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold hover:bg-slate-50"
                     >
-                      <Send
+                      <Paperclip
                         size={15}
                       />
 
-                      Gửi phản hồi
+                      Đính kèm file
                     </button>
+
+                    <FileSelection
+                      files={
+                        replyFiles
+                      }
+                      onRemove={(
+                        index,
+                      ) =>
+                        setReplyFiles(
+                          (
+                            current,
+                          ) =>
+                            current.filter(
+                              (
+                                _,
+                                currentIndex,
+                              ) =>
+                                currentIndex !==
+                                index,
+                            ),
+                        )
+                      }
+                    />
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void sendReply(
+                            false,
+                          )
+                        }
+                        disabled={
+                          processingId ===
+                            selectedTicket._id ||
+                          uploading ||
+                          (
+                            !replyText.trim() &&
+                            replyFiles.length ===
+                              0
+                          )
+                        }
+                        className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {processingId ===
+                        selectedTicket._id ? (
+                          <Loader2
+                            size={15}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <Send
+                            size={15}
+                          />
+                        )}
+
+                        Gửi phản hồi
+                      </button>
+
+                      {permissions.canManage && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void sendReply(
+                              true,
+                            )
+                          }
+                          disabled={
+                            processingId ===
+                              selectedTicket._id ||
+                            uploading ||
+                            (
+                              !replyText.trim() &&
+                              replyFiles.length ===
+                                0
+                            )
+                          }
+                          className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Gửi & đánh dấu đã xử lý
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
 
               {/* HISTORY */}
 
-              <div className="p-5">
+              <div>
                 <h3 className="flex items-center gap-2 font-bold">
                   <Clock3
                     size={17}
                   />
+
                   Lịch sử xử lý
                 </h3>
 
-                <div className="mt-5 space-y-4">
-                  {selectedTicket
-                    .lichSuXuLy
-                    ?.slice()
-                    .reverse()
-                    .map(
-                      (
-                        history,
-                        index,
-                      ) => (
-                        <div
-                          key={
-                            history._id ||
-                            index
-                          }
-                          className="flex gap-3"
-                        >
-                          <CircleDot
-                            size={17}
-                            className="mt-1 shrink-0 text-[#123b68]"
-                          />
+                {(selectedTicket
+                  .lichSuXuLy ||
+                  []).length ===
+                  0 ? (
+                  <div className="mt-4 rounded-xl border border-dashed p-5 text-center text-sm text-slate-400">
+                    Chưa có lịch sử xử lý.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    {(
+                      selectedTicket
+                        .lichSuXuLy ||
+                      []
+                    )
+                      .slice()
+                      .reverse()
+                      .map(
+                        (
+                          history,
+                          index,
+                        ) => (
+                          <div
+                            key={
+                              history._id ||
+                              `${history.createdAt}-${index}`
+                            }
+                            className="flex gap-3"
+                          >
+                            <CircleDot
+                              size={17}
+                              className="mt-1 shrink-0 text-[#123b68]"
+                            />
 
-                          <div>
-                            <p className="text-sm font-semibold">
-                              {actionLabel(
-                                history.hanhDong,
-                              )}
-                            </p>
-
-                            <p className="mt-1 text-xs text-slate-500">
-                              {history.nguoiThucHienTen}
-                              {" · "}
-                              {formatDateTime(
-                                history.createdAt,
-                              )}
-                            </p>
-
-                            {history.ghiChu && (
-                              <p className="mt-1 text-xs text-slate-500">
-                                {history.ghiChu}
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold">
+                                {actionLabel(
+                                  history.hanhDong,
+                                )}
                               </p>
-                            )}
+
+                              <p className="mt-1 text-xs text-slate-500">
+                                {history.nguoiThucHienTen}
+                                {" · "}
+                                {roleLabel(
+                                  history.vaiTro,
+                                )}
+                                {" · "}
+                                {formatDateTime(
+                                  history.createdAt,
+                                )}
+                              </p>
+
+                              {history.trangThaiCu &&
+                                history.trangThaiMoi &&
+                                history.trangThaiCu !==
+                                  history.trangThaiMoi && (
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {statusLabel(
+                                      history.trangThaiCu,
+                                    )}
+                                    {" → "}
+                                    {statusLabel(
+                                      history.trangThaiMoi,
+                                    )}
+                                  </p>
+                                )}
+
+                              {history.ghiChu && (
+                                <p className="mt-1 break-words text-xs text-slate-500">
+                                  {history.ghiChu}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ),
-                    )}
-                </div>
-
-                {selectedTicket.nguoiXuLyTen && (
-                  <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                    <div className="flex gap-3">
-                      <ShieldCheck
-                        size={20}
-                        className="text-[#123b68]"
-                      />
-
-                      <div>
-                        <p className="text-xs text-blue-600">
-                          Người phụ trách
-                        </p>
-
-                        <p className="font-bold text-blue-950">
-                          {selectedTicket.nguoiXuLyTen}
-                        </p>
-                      </div>
-                    </div>
+                        ),
+                      )}
                   </div>
                 )}
               </div>
             </div>
-          </section>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
 /* =========================================================
-   SMALL COMPONENTS
+   COMPONENTS
 ========================================================= */
 
 function Field({
@@ -2491,16 +2683,16 @@ function Field({
     string;
 
   children:
-    React.ReactNode;
+    ReactNode;
 }) {
   return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-slate-700">
+    <label>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
         {label}
-      </label>
+      </span>
 
       {children}
-    </div>
+    </label>
   );
 }
 
@@ -2515,12 +2707,12 @@ function SummaryCard({
     number;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border bg-white p-4">
       <p className="text-xs text-slate-500">
         {label}
       </p>
 
-      <p className="mt-2 text-2xl font-bold">
+      <p className="mt-1 text-xl font-bold">
         {value}
       </p>
     </div>
@@ -2533,8 +2725,53 @@ function StatusBadge({
   status:
     TrangThai;
 }) {
+  let classes =
+    "bg-blue-50 text-blue-700";
+
+  if (
+    status ===
+    "DA_TIEP_NHAN"
+  ) {
+    classes =
+      "bg-indigo-50 text-indigo-700";
+  }
+
+  if (
+    status ===
+    "DANG_XU_LY"
+  ) {
+    classes =
+      "bg-cyan-50 text-cyan-700";
+  }
+
+  if (
+    status ===
+    "DA_XU_LY"
+  ) {
+    classes =
+      "bg-emerald-50 text-emerald-700";
+  }
+
+  if (
+    status ===
+    "CHO_BO_SUNG"
+  ) {
+    classes =
+      "bg-amber-50 text-amber-700";
+  }
+
+  if (
+    status ===
+    "DONG"
+  ) {
+    classes =
+      "bg-slate-100 text-slate-600";
+  }
+
   return (
-    <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+    <span
+      className={`rounded-full px-2.5 py-1 text-xs font-bold ${classes}`}
+    >
       {statusLabel(
         status,
       )}
@@ -2542,28 +2779,135 @@ function StatusBadge({
   );
 }
 
-function PriorityBadge({
-  value,
+function FileSelection({
+  files,
+  onRemove,
 }: {
-  value:
-    MucDo;
+  files:
+    File[];
+
+  onRemove:
+    (
+      index:
+        number,
+    ) => void;
 }) {
-  const classes =
-    value ===
-    "CAO"
-      ? "border-red-200 bg-red-50 text-red-700"
-      : value ===
-          "THAP"
-        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-        : "border-amber-200 bg-amber-50 text-amber-700";
+  if (
+    files.length ===
+    0
+  ) {
+    return null;
+  }
 
   return (
-    <span
-      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${classes}`}
-    >
-      {priorityLabel(
-        value,
+    <div className="mt-3 space-y-2">
+      {files.map(
+        (
+          file,
+          index,
+        ) => (
+          <div
+            key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+            className="flex items-center justify-between gap-3 rounded-lg border bg-slate-50 p-3"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold">
+                {file.name}
+              </p>
+
+              <p className="text-[11px] text-slate-400">
+                {formatFileSize(
+                  file.size,
+                )}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                onRemove(
+                  index,
+                )
+              }
+              className="shrink-0 rounded p-1 text-red-600 hover:bg-red-50"
+            >
+              <Trash2
+                size={15}
+              />
+            </button>
+          </div>
+        ),
       )}
-    </span>
+    </div>
+  );
+}
+
+function AttachmentGrid({
+  files,
+  compact =
+    false,
+}: {
+  files:
+    Attachment[];
+
+  compact?:
+    boolean;
+}) {
+  if (
+    files.length ===
+    0
+  ) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`grid gap-2 ${
+        compact
+          ? "mt-3 sm:grid-cols-2"
+          : "mt-4 sm:grid-cols-2 lg:grid-cols-3"
+      }`}
+    >
+      {files.map(
+        (
+          file,
+          index,
+        ) => (
+          <a
+            key={`${file.pathname || file.duongDan}-${index}`}
+            href={
+              attachmentUrl(
+                file,
+              )
+            }
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-w-0 items-center gap-3 rounded-lg border bg-white p-3 transition hover:border-[#123b68]"
+          >
+            <FileText
+              size={22}
+              className="shrink-0 text-[#123b68]"
+            />
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold">
+                {file.tenTep}
+              </p>
+
+              <p className="text-[11px] text-slate-400">
+                {formatFileSize(
+                  file.kichThuoc,
+                )}
+              </p>
+            </div>
+
+            <ExternalLink
+              size={13}
+              className="shrink-0 text-slate-400"
+            />
+          </a>
+        ),
+      )}
+    </div>
   );
 }
